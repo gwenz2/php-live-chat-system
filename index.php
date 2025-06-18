@@ -67,16 +67,22 @@
                 <div class="card shadow-sm">
                     <div class="card-body">
                         <h1 class="card-title ">Login your account</h1>
-                        <form action="" autocomplete="off">
+                        <?php if (isset($_GET['msg'])): ?>
+                            <div class="alert alert-info text-center mt-3"><?php echo htmlspecialchars($_GET['msg']); ?></div>
+                        <?php endif; ?>
+                        <?php if (isset($alert) && $alert): ?>
+                            <div class="alert alert-danger text-center mt-3"><?php echo htmlspecialchars($alert); ?></div>
+                        <?php endif; ?>
+                        <form action="login.php" method="POST" autocomplete="off">
                             <div class="form-group">
                                 <label for="username">Username</label>
-                                <input id="username" class="form-control" name="username">
+                                <input id="username" class="form-control" name="username" required pattern="[a-z0-9]+" title="Lowercase letters and numbers only, no spaces or symbols">
                             </div>
                             <div class="form-group">
                                 <label for="password">Password</label>
-                                <input type="password" class="form-control" name="password">
+                                <input type="password" class="form-control" name="password" required pattern=".{8,}" title="At least 8 characters">
                             </div>
-                            <button type="button" id="sendlogin" class="btn btn-primary mt-3"><a href="dashboard/index.php">Login test</a> Login</button>
+                            <button type="submit" class="btn btn-primary mt-3">Login</button>
                             <p class="mt-3">Don't have an account? <a href="signupForm.php">Sign up</a></p>
                         </form>
                     </div>
