@@ -8,8 +8,104 @@
     <title>Gwez - Live-Chat</title>
 </head>
 <body class="p-3">
-    <?php include_once 'navbar.php';?>
-    <div class="container mt-5">
+    <?php 
+    include_once 'navbar.php';
+    require_once '../db.php';
+    session_start();
+
+    if (!isset($_SESSION['user_id'])) {
+        header('Location: ../index.php?msg=' . urlencode('Please log in to access the chatroom.'));
+        exit;
+    }
+
+    // Get the user to chat with
+    $other_user_id = isset($_GET['user_id']) ? (int)$_GET['user_id'] : 0;
+    $current_user_id = $_SESSION['user_id'];
+
+    // Fetch other user's info
+    $other_user = null;
+    if ($other_user_id) {
+        $stmt = $conn->prepare('SELECT display_name, username FROM users WHERE id = ?');
+        $stmt->bind_param('i', $other_user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $other_user = $result->fetch_assoc();
+        $stmt->close();
+    }
+
+    // Fetch messages between the two users
+    $messages = [];
+    if ($other_user_id) {
+        $stmt = $conn->prepare('SELECT * FROM messages WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?) ORDER BY sent_at ASC');
+        $stmt->bind_param('iiii', $current_user_id, $other_user_id, $other_user_id, $current_user_id);
+        $stmt->execute();
+        $messages = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+    }
+
+    // Handle message sending
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && $other_user_id && isset($_POST['message']) && trim($_POST['message']) !== '') {
+        $msg_text = trim($_POST['message']);
+        $stmt = $conn->prepare('INSERT INTO messages (sender_id, receiver_id, message_text) VALUES (?, ?, ?)');
+        $stmt->bind_param('iis', $current_user_id, $other_user_id, $msg_text);
+        $stmt->execute();
+        $stmt->close();
+        // Redirect to avoid resubmission
+        header('Location: chatroom.php?user_id=' . $other_user_id);
+        exit;
+    }
+    ?>
+    <div class="container mt-5" style="max-width: 90vw;">
+        <div class="row justify-content-center">
+            <div class="col-md-8 col-lg-6 w-100" style="max-width: 90vw;">
+                <div class="card shadow-sm rounded-4" style="height: 70vh; display: flex; flex-direction: column;">
+                    <!-- Chat Header -->
+                    <div class="card-header bg-primary text-white d-flex align-items-center gap-3 rounded-top-4">
+                        <a href="index.php" class="btn btn-light btn-sm me-2">&larr;</a>
+                        <img src="../assets/user_male_96px.png" class="rounded-circle border border-light" width="48" height="48" alt="User">
+                        <div>
+                            <h6 class="mb-0"><?php echo $other_user ? htmlspecialchars($other_user['display_name']) : 'Select a user'; ?></h6>
+                            <small class="text-light"><?php echo $other_user ? '@' . htmlspecialchars($other_user['username']) : ''; ?></small>
+                        </div>
+                    </div>
+                    <!-- Chat Messages -->
+                    <div class="flex-grow-1 overflow-auto p-3" style="background: #f8fafc;">
+                        <?php if ($other_user_id && $messages): ?>
+                            <?php foreach ($messages as $msg): ?>
+                                <?php if ($msg['sender_id'] == $current_user_id): ?>
+                                    <!-- Sent message -->
+                                    <div class="d-flex flex-row-reverse mb-3">
+                                        <img src="../assets/user_male_80px.png" class="rounded-circle ms-2" width="36" height="36" alt="Me">
+                                        <div>
+                                            <div class="bg-primary text-white rounded-3 p-2 px-3 mb-1"><?php echo htmlspecialchars($msg['message_text']); ?></div>
+                                            <small class="text-muted d-block text-end"><?php echo date('H:i', strtotime($msg['sent_at'])); ?></small>
+                                        </div>
+                                    </div>
+                                <?php else: ?>
+                                    <!-- Received message -->
+                                    <div class="d-flex mb-3">
+                                        <img src="../assets/user_male_96px.png" class="rounded-circle me-2" width="36" height="36" alt="User">
+                                        <div>
+                                            <div class="bg-white border rounded-3 p-2 px-3 mb-1"><?php echo htmlspecialchars($msg['message_text']); ?></div>
+                                            <small class="text-muted"><?php echo date('H:i', strtotime($msg['sent_at'])); ?></small>
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
+                            <?php endforeach; ?>
+                        <?php elseif ($other_user_id): ?>
+                            <div class="text-center text-muted mt-5">No messages yet. Say hello!</div>
+                        <?php else: ?>
+                            <div class="text-center text-muted mt-5">Select a user to start chatting.</div>
+                        <?php endif; ?>
+                    </div>
+                    <!-- Chat Input -->
+                    <form class="card-footer bg-white border-0 d-flex align-items-center gap-2 rounded-bottom-4" method="POST" action="?user_id=<?php echo $other_user_id; ?>">
+                        <input type="text" class="form-control rounded-pill" placeholder="Type a message..." name="message" required <?php if (!$other_user_id) echo 'disabled'; ?>>
+                        <button type="submit" class="btn btn-primary rounded-pill px-4" <?php if (!$other_user_id) echo 'disabled'; ?>>Send</button>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
     <script src="../assets/js/bootstrap.bundle.min.js"></script>
 </body>
