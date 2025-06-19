@@ -9,7 +9,7 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $current_user_id = $_SESSION['user_id'];
-$sql = "SELECT id, display_name, username, last_seen, status,
+$sql = "SELECT id, display_name, username, last_seen, status, avatar_url,
     (SELECT message_text FROM messages
         WHERE (sender_id = users.id AND receiver_id = ?) OR (sender_id = ? AND receiver_id = users.id)
         ORDER BY sent_at DESC LIMIT 1) AS last_message,

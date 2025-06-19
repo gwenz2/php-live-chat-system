@@ -22,6 +22,19 @@ if (isset($_SESSION['user_id'])) {
 
 // Set all users to offline if their last_seen is older than 1 minute (run on every dashboard load)
 require_once 'update_status.php';
+
+// Fetch current user's avatar_url for welcome message
+$current_avatar = '../assets/user_male_80px.png';
+if (isset($_SESSION['user_id'])) {
+    $stmt = $conn->prepare('SELECT avatar_url FROM users WHERE id = ?');
+    $stmt->bind_param('i', $_SESSION['user_id']);
+    $stmt->execute();
+    $stmt->bind_result($avatar_url);
+    if ($stmt->fetch() && $avatar_url) {
+        $current_avatar = htmlspecialchars($avatar_url);
+    }
+    $stmt->close();
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -38,7 +51,7 @@ require_once 'update_status.php';
         <div class="row mb-3">
             <div class="col d-flex justify-content-end align-items-center">
                 <div class="bg-white shadow-sm rounded-pill px-3 py-2 d-flex align-items-center gap-2" style="min-width: 180px;">
-                    <img src="../assets/user_male_80px.png" alt="User" width="32" height="32" class="rounded-circle border border-primary">
+                    <img src="<?php echo $current_avatar; ?>" alt="User" width="32" height="32" class="rounded-circle border border-primary">
                     <span class="fw-semibold text-primary">Welcome, <?php echo htmlspecialchars($_SESSION['display_name'] ?? $_SESSION['username']); ?>!</span>
                 </div>
             </div>
@@ -76,9 +89,10 @@ require_once 'update_status.php';
                                 $offline_stmt->close();
                                 $user['status'] = 'offline';
                             }
+                            //$avatar = $user['avatar_url'] ? htmlspecialchars($user['avatar_url']) : '../assets/user_male_80px.png';
                         ?>
                             <a href="chatroom.php?user_id=<?php echo $user['id']; ?>" class="list-group-item list-group-item-action d-flex align-items-center gap-3">
-                                <img src="../assets/user_male_80px.png" class="rounded-circle border border-primary" width="50" height="50" alt="<?php echo htmlspecialchars($user['display_name']); ?>">
+                                <img src="<?php echo $avatar; ?>" class="rounded-circle border border-primary" width="50" height="50" alt="<?php echo htmlspecialchars($user['display_name']); ?>">
                                 <div class="flex-grow-1">
                                     <div class="d-flex align-items-center mb-1">
                                         <h6 class="mb-0 me-2"><?php echo htmlspecialchars($user['display_name']); ?></h6>
@@ -112,8 +126,9 @@ require_once 'update_status.php';
         let html = '';
         const currentUserId = <?php echo json_encode($_SESSION['user_id']); ?>;
         users.forEach(user => {
+            const avatar = user.avatar_url ? user.avatar_url : '../assets/user_male_80px.png';
             html += `<a href="chatroom.php?user_id=${user.id}" class="list-group-item list-group-item-action d-flex align-items-center gap-3">
-                <img src="../assets/user_male_80px.png" class="rounded-circle border border-primary" width="50" height="50" alt="${user.display_name}">
+                <img src="${avatar}" class="rounded-circle border border-primary" width="50" height="50" alt="${user.display_name}">
                 <div class="flex-grow-1">
                     <div class="d-flex align-items-center mb-1">
                         <h6 class="mb-0 me-2">${user.display_name}</h6>

@@ -62,6 +62,30 @@
         header('Location: chatroom.php?user_id=' . $other_user_id);
         exit;
     }
+
+    // Fetch avatars for current user and other user
+    $current_avatar = '../assets/user_male_80px.png';
+    $other_avatar = '../assets/user_male_96px.png';
+    if (isset($_SESSION['user_id'])) {
+        $stmt = $conn->prepare('SELECT avatar_url FROM users WHERE id = ?');
+        $stmt->bind_param('i', $_SESSION['user_id']);
+        $stmt->execute();
+        $stmt->bind_result($avatar_url);
+        if ($stmt->fetch() && $avatar_url) {
+            $current_avatar = htmlspecialchars($avatar_url);
+        }
+        $stmt->close();
+    }
+    if ($other_user_id) {
+        $stmt = $conn->prepare('SELECT avatar_url FROM users WHERE id = ?');
+        $stmt->bind_param('i', $other_user_id);
+        $stmt->execute();
+        $stmt->bind_result($avatar_url);
+        if ($stmt->fetch() && $avatar_url) {
+            $other_avatar = htmlspecialchars($avatar_url);
+        }
+        $stmt->close();
+    }
     ?>
     <div class="container mt-5" style="max-width: 90vw;">
         <div class="row justify-content-center">
@@ -70,7 +94,7 @@
                     <!-- Chat Header -->
                     <div class="card-header bg-primary text-white d-flex align-items-center gap-3 rounded-top-4">
                         <a href="index.php" class="btn btn-light btn-sm me-2">&larr;</a>
-                        <img src="../assets/user_male_96px.png" class="rounded-circle border border-light" width="48" height="48" alt="User">
+                        <img src="<?php echo $other_avatar; ?>" class="rounded-circle border border-light" width="48" height="48" alt="User">
                         <div>
                             <h6 class="mb-0"><?php echo $other_user ? htmlspecialchars($other_user['display_name']) : 'Select a user'; ?></h6>
                             <small class="text-light"><?php echo $other_user ? '@' . htmlspecialchars($other_user['username']) : ''; ?></small>
@@ -83,7 +107,7 @@
                                 <?php if ($msg['sender_id'] == $current_user_id): ?>
                                     <!-- Sent message -->
                                     <div class="d-flex flex-row-reverse mb-3">
-                                        <img src="../assets/user_male_80px.png" class="rounded-circle ms-2" width="36" height="36" alt="Me">
+                                        <img src="<?php echo $current_avatar; ?>" class="rounded-circle ms-2" width="36" height="36" alt="Me">
                                         <div>
                                             <div class="bg-primary text-white rounded-3 p-2 px-3 mb-1<?php if ($msg['is_read']) echo ' border border-success'; ?>">
                                                 <?php echo htmlspecialchars($msg['message_text']); ?>
@@ -99,7 +123,7 @@
                                 <?php else: ?>
                                     <!-- Received message -->
                                     <div class="d-flex mb-3">
-                                        <img src="../assets/user_male_96px.png" class="rounded-circle me-2" width="36" height="36" alt="User">
+                                        <img src="<?php echo $other_avatar; ?>" class="rounded-circle me-2" width="36" height="36" alt="User">
                                         <div>
                                             <div class="bg-white border rounded-3 p-2 px-3 mb-1"><?php echo htmlspecialchars($msg['message_text']); ?></div>
                                             <small class="text-muted"><?php echo date('H:i', strtotime($msg['sent_at'])); ?></small>
@@ -127,6 +151,8 @@
     // AJAX polling for new messages
     const chatBox = document.querySelector('.flex-grow-1.overflow-auto.p-3');
     const otherUserId = <?php echo json_encode($other_user_id); ?>;
+    const currentAvatar = <?php echo json_encode($current_avatar); ?>;
+    const otherAvatar = <?php echo json_encode($other_avatar); ?>;
     let lastMessages = '';
 
     function renderMessages(messages) {
@@ -135,7 +161,7 @@
         messages.forEach(msg => {
             if (msg.sender_id == currentUserId) {
                 html += `<div class="d-flex flex-row-reverse mb-3">
-                    <img src="../assets/user_male_80px.png" class="rounded-circle ms-2" width="36" height="36" alt="Me">
+                    <img src="${currentAvatar}" class="rounded-circle ms-2" width="36" height="36" alt="Me">
                     <div>
                         <div class="bg-primary text-white rounded-3 p-2 px-3 mb-1${msg.is_read == 1 ? ' border border-success' : ''}">${msg.message_text}</div>
                         <div class="d-flex justify-content-end align-items-center gap-2">
@@ -146,7 +172,7 @@
                 </div>`;
             } else {
                 html += `<div class="d-flex mb-3">
-                    <img src="../assets/user_male_96px.png" class="rounded-circle me-2" width="36" height="36" alt="User">
+                    <img src="${otherAvatar}" class="rounded-circle me-2" width="36" height="36" alt="User">
                     <div>
                         <div class="bg-white border rounded-3 p-2 px-3 mb-1">${msg.message_text}</div>
                         <small class="text-muted">${msg.sent_at.substring(11,16)}</small>
