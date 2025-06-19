@@ -7,6 +7,18 @@ if (!isset($_SESSION['user_id'])) {
     header('Location: ../index.php?msg=' . urlencode('Please log in to access the dashboard.'));
     exit;
 }
+
+// Update last_seen and status for the current user on every page load
+if (isset($_SESSION['user_id'])) {
+    $stmt = $conn->prepare("UPDATE users SET last_seen = NOW(), status = 'online' WHERE id = ?");
+    $stmt->bind_param('i', $_SESSION['user_id']);
+    $stmt->execute();
+    $stmt->close();
+}
+
+// Set all users to offline if their last_seen is older than 1 minute (run on every dashboard load)
+$timeout_seconds = 60;
+$conn->query("UPDATE users SET status = 'offline' WHERE last_seen < (NOW() - INTERVAL $timeout_seconds SECOND) AND status != 'offline'");
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -36,19 +48,30 @@ if (!isset($_SESSION['user_id'])) {
                         <div class="list-group list-group-flush">
                         <?php
                         $current_user_id = $_SESSION['user_id'];
-                        $sql = "SELECT id, display_name, username FROM users WHERE id != ?";
+                        $sql = "SELECT id, display_name, username, last_seen, status FROM users WHERE id != ?";
                         $stmt = $conn->prepare($sql);
                         $stmt->bind_param('i', $current_user_id);
                         $stmt->execute();
                         $result = $stmt->get_result();
                         while ($user = $result->fetch_assoc()):
+                            $is_online = (strtotime($user['last_seen']) > (time() - 60)); // 1 minute
+                            // If user is not online, update their status to offline in DB if needed
+                            if (!$is_online && $user['status'] !== 'offline') {
+                                $offline_stmt = $conn->prepare("UPDATE users SET status = 'offline' WHERE id = ?");
+                                $offline_stmt->bind_param('i', $user['id']);
+                                $offline_stmt->execute();
+                                $offline_stmt->close();
+                                $user['status'] = 'offline';
+                            }
                         ?>
                             <a href="chatroom.php?user_id=<?php echo $user['id']; ?>" class="list-group-item list-group-item-action d-flex align-items-center gap-3">
                                 <img src="../assets/user_male_80px.png" class="rounded-circle border border-primary" width="50" height="50" alt="<?php echo htmlspecialchars($user['display_name']); ?>">
                                 <div class="flex-grow-1">
                                     <div class="d-flex align-items-center mb-1">
                                         <h6 class="mb-0 me-2"><?php echo htmlspecialchars($user['display_name']); ?></h6>
-                                        <span class="badge bg-secondary">User</span>
+                                        <span class="badge bg-<?php echo ($user['status'] === 'online') ? 'success' : 'secondary'; ?>">
+                                            <?php echo ucfirst($user['status']); ?>
+                                        </span>
                                     </div>
                                     <small class="text-muted">@<?php echo htmlspecialchars($user['username']); ?></small>
                                 </div>
