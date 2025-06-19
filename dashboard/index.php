@@ -1,5 +1,6 @@
 <?php
 require_once '../db.php';
+require_once 'update_status.php';
 session_start();
 
 // Redirect to login if not authenticated
@@ -17,8 +18,7 @@ if (isset($_SESSION['user_id'])) {
 }
 
 // Set all users to offline if their last_seen is older than 1 minute (run on every dashboard load)
-$timeout_seconds = 60;
-$conn->query("UPDATE users SET status = 'offline' WHERE last_seen < (NOW() - INTERVAL $timeout_seconds SECOND) AND status != 'offline'");
+require_once 'update_status.php';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -48,9 +48,19 @@ $conn->query("UPDATE users SET status = 'offline' WHERE last_seen < (NOW() - INT
                         <div class="list-group list-group-flush">
                         <?php
                         $current_user_id = $_SESSION['user_id'];
-                        $sql = "SELECT id, display_name, username, last_seen, status FROM users WHERE id != ?";
+                        $sql = "SELECT id, display_name, username, last_seen, status,
+                            (SELECT message_text FROM messages
+                                WHERE (sender_id = users.id AND receiver_id = ?) OR (sender_id = ? AND receiver_id = users.id)
+                                ORDER BY sent_at DESC LIMIT 1) AS last_message,
+                            (SELECT is_read FROM messages
+                                WHERE (sender_id = users.id AND receiver_id = ?) OR (sender_id = ? AND receiver_id = users.id)
+                                ORDER BY sent_at DESC LIMIT 1) AS last_is_read,
+                            (SELECT sender_id FROM messages
+                                WHERE (sender_id = users.id AND receiver_id = ?) OR (sender_id = ? AND receiver_id = users.id)
+                                ORDER BY sent_at DESC LIMIT 1) AS last_sender_id
+                            FROM users WHERE id != ?";
                         $stmt = $conn->prepare($sql);
-                        $stmt->bind_param('i', $current_user_id);
+                        $stmt->bind_param('iiiiiii', $current_user_id, $current_user_id, $current_user_id, $current_user_id, $current_user_id, $current_user_id, $current_user_id);
                         $stmt->execute();
                         $result = $stmt->get_result();
                         while ($user = $result->fetch_assoc()):
@@ -74,6 +84,14 @@ $conn->query("UPDATE users SET status = 'offline' WHERE last_seen < (NOW() - INT
                                         </span>
                                     </div>
                                     <small class="text-muted">@<?php echo htmlspecialchars($user['username']); ?></small>
+                                    <?php if ($user['last_message']): ?>
+                                        <div class="text-truncate small <?php echo ($user['last_is_read'] == 0) ? 'fw-bold' : 'text-dark-emphasis'; ?>">
+                                            <?php if ($user['last_sender_id'] == $current_user_id): ?>
+                                                <span class="text-primary">You: </span>
+                                            <?php endif; ?>
+                                             <?php echo htmlspecialchars($user['last_message']); ?>
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
                             </a>
                         <?php endwhile; $stmt->close(); ?>

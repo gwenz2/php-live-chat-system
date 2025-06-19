@@ -43,6 +43,14 @@
         $stmt->close();
     }
 
+    // Mark messages as read when the chat is opened
+    if ($other_user_id) {
+        $stmt = $conn->prepare('UPDATE messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ? AND is_read = 0');
+        $stmt->bind_param('ii', $other_user_id, $current_user_id);
+        $stmt->execute();
+        $stmt->close();
+    }
+
     // Handle message sending
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $other_user_id && isset($_POST['message']) && trim($_POST['message']) !== '') {
         $msg_text = trim($_POST['message']);
@@ -77,8 +85,15 @@
                                     <div class="d-flex flex-row-reverse mb-3">
                                         <img src="../assets/user_male_80px.png" class="rounded-circle ms-2" width="36" height="36" alt="Me">
                                         <div>
-                                            <div class="bg-primary text-white rounded-3 p-2 px-3 mb-1"><?php echo htmlspecialchars($msg['message_text']); ?></div>
-                                            <small class="text-muted d-block text-end"><?php echo date('H:i', strtotime($msg['sent_at'])); ?></small>
+                                            <div class="bg-primary text-white rounded-3 p-2 px-3 mb-1<?php if ($msg['is_read']) echo ' border border-success'; ?>">
+                                                <?php echo htmlspecialchars($msg['message_text']); ?>
+                                            </div>
+                                            <div class="d-flex justify-content-end align-items-center gap-2">
+                                                <small class="text-muted d-block text-end mb-0"><?php echo date('H:i', strtotime($msg['sent_at'])); ?></small>
+                                                <?php if ($msg['is_read']): ?>
+                                                    <span class="text-success small ms-1" title="Read">Read</span>
+                                                <?php endif; ?>
+                                            </div>
                                         </div>
                                     </div>
                                 <?php else: ?>
