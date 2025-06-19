@@ -123,6 +123,64 @@
         </div>
     </div>
     <script src="../assets/js/bootstrap.bundle.min.js"></script>
+    <script>
+    // AJAX polling for new messages
+    const chatBox = document.querySelector('.flex-grow-1.overflow-auto.p-3');
+    const otherUserId = <?php echo json_encode($other_user_id); ?>;
+    let lastMessages = '';
+
+    function renderMessages(messages) {
+        let html = '';
+        const currentUserId = <?php echo json_encode($current_user_id); ?>;
+        messages.forEach(msg => {
+            if (msg.sender_id == currentUserId) {
+                html += `<div class="d-flex flex-row-reverse mb-3">
+                    <img src="../assets/user_male_80px.png" class="rounded-circle ms-2" width="36" height="36" alt="Me">
+                    <div>
+                        <div class="bg-primary text-white rounded-3 p-2 px-3 mb-1${msg.is_read == 1 ? ' border border-success' : ''}">${msg.message_text}</div>
+                        <div class="d-flex justify-content-end align-items-center gap-2">
+                            <small class="text-muted d-block text-end mb-0">${msg.sent_at.substring(11,16)}</small>
+                            ${msg.is_read == 1 ? '<span class="text-success small ms-1" title="Read">Read</span>' : ''}
+                        </div>
+                    </div>
+                </div>`;
+            } else {
+                html += `<div class="d-flex mb-3">
+                    <img src="../assets/user_male_96px.png" class="rounded-circle me-2" width="36" height="36" alt="User">
+                    <div>
+                        <div class="bg-white border rounded-3 p-2 px-3 mb-1">${msg.message_text}</div>
+                        <small class="text-muted">${msg.sent_at.substring(11,16)}</small>
+                    </div>
+                </div>`;
+            }
+        });
+        chatBox.innerHTML = html || '<div class="text-center text-muted mt-5">No messages yet. Say hello!</div>';
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function markMessagesAsRead() {
+        fetch(`update_status.php?action=read_messages&user_id=${otherUserId}`, { method: 'POST' });
+    }
+
+    function fetchMessages() {
+        fetch(`fetch_messages.php?user_id=${otherUserId}`)
+            .then(res => res.json())
+            .then(messages => {
+                const msgString = JSON.stringify(messages);
+                if (msgString !== lastMessages) {
+                    renderMessages(messages);
+                    lastMessages = msgString;
+                }
+                // Mark messages as read if there are any from the other user
+                if (messages.some(msg => msg.sender_id == otherUserId && msg.is_read == 0)) {
+                    markMessagesAsRead();
+                }
+            });
+    }
+
+    setInterval(fetchMessages, 2000); // Poll every 2 seconds
+    fetchMessages(); // Initial load
+    </script>
 </body>
 
 </html>

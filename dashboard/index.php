@@ -1,7 +1,10 @@
 <?php
 require_once '../db.php';
 require_once 'update_status.php';
-session_start();
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 // Redirect to login if not authenticated
 if (!isset($_SESSION['user_id'])) {
@@ -102,6 +105,35 @@ require_once 'update_status.php';
         </div>
     </div>
     <script src="../assets/js/bootstrap.bundle.min.js"></script>
+    <script>
+    // AJAX polling for dashboard contacts
+    const contactsList = document.querySelector('.list-group.list-group-flush');
+    function renderContacts(users) {
+        let html = '';
+        const currentUserId = <?php echo json_encode($_SESSION['user_id']); ?>;
+        users.forEach(user => {
+            html += `<a href="chatroom.php?user_id=${user.id}" class="list-group-item list-group-item-action d-flex align-items-center gap-3">
+                <img src="../assets/user_male_80px.png" class="rounded-circle border border-primary" width="50" height="50" alt="${user.display_name}">
+                <div class="flex-grow-1">
+                    <div class="d-flex align-items-center mb-1">
+                        <h6 class="mb-0 me-2">${user.display_name}</h6>
+                        <span class="badge bg-${user.status === 'online' ? 'success' : 'secondary'}">${user.status ? user.status.charAt(0).toUpperCase() + user.status.slice(1) : ''}</span>
+                    </div>
+                    <small class="text-muted">@${user.username}</small>
+                    ${user.last_message ? `<div class="text-truncate small ${user.last_is_read == 0 ? 'fw-bold' : 'text-dark-emphasis'}">${user.last_sender_id == currentUserId ? '<span class=\'text-primary\'>You: </span>' : ''}${user.last_message}</div>` : ''}
+                </div>
+            </a>`;
+        });
+        contactsList.innerHTML = html;
+    }
+    function fetchContacts() {
+        fetch('fetch_dashboard.php')
+            .then(res => res.json())
+            .then(users => renderContacts(users));
+    }
+    setInterval(fetchContacts, 2000); // Poll every 2 seconds
+    fetchContacts(); // Initial load
+    </script>
 </body>
 
 </html>
