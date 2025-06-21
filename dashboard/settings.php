@@ -12,27 +12,26 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// Update last_seen and status for the current user on every page load
-if (isset($_SESSION['user_id'])) {
-    $stmt = $conn->prepare("UPDATE users SET last_seen = NOW(), status = 'online' WHERE id = ?");
-    $stmt->bind_param('i', $_SESSION['user_id']);
-    $stmt->execute();
-    $stmt->close();
-}
+// Ensure user_id is an integer
+$user_id = (int) $_SESSION['user_id'];
 
-// Set all users to offline if their last_seen is older than 1 minute (run on every dashboard load)
+// Update last_seen and status
+$stmt = $conn->prepare("UPDATE users SET last_seen = NOW(), status = 'online' WHERE id = ?");
+$stmt->bind_param('i', $user_id);
+$stmt->execute();
+$stmt->close();
+
+// Set all users offline if last_seen > 1 min ago
 require_once 'update_status.php';
 
 // Fetch current user data
 $user = null;
-if (isset($_SESSION['user_id'])) {
-    $stmt = $conn->prepare('SELECT display_name, avatar_url, username FROM users WHERE id = ?');
-    $stmt->bind_param('i', $_SESSION['user_id']);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $user = $result->fetch_assoc();
-    $stmt->close();
-}
+$stmt = $conn->prepare('SELECT display_name, avatar_url, username FROM users WHERE id = ?');
+$stmt->bind_param('i', $user_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$user = $result->fetch_assoc();
+$stmt->close();
 
 // Handle profile update
 $success = false;
@@ -44,13 +43,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $new_username = trim($_POST['username'] ?? '');
     $current_password = $_POST['current_password'] ?? '';
     $new_password = $_POST['new_password'] ?? '';
-    // Handle file upload and process image
+
+    // Handle image upload
     if (isset($_FILES['avatar_file']) && $_FILES['avatar_file']['error'] === UPLOAD_ERR_OK) {
         $fileTmp = $_FILES['avatar_file']['tmp_name'];
         $fileExt = strtolower(pathinfo($_FILES['avatar_file']['name'], PATHINFO_EXTENSION));
         $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
         if (in_array($fileExt, $allowed)) {
-            $newName = 'avatar_' . $_SESSION['user_id'] . '_' . time() . '.jpg';
+            $newName = 'avatar_' . $user_id . '_' . time() . '.jpg';
             $dest = '../assets/images/' . $newName;
             $srcImg = null;
             if ($fileExt === 'jpg' || $fileExt === 'jpeg') {
@@ -62,13 +62,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($fileExt === 'webp') {
                 $srcImg = imagecreatefromwebp($fileTmp);
             }
+
             if ($srcImg) {
                 $dstImg = imagecreatetruecolor(200, 200);
                 $width = imagesx($srcImg);
                 $height = imagesy($srcImg);
                 $minDim = min($width, $height);
-                $srcX = ($width - $minDim) / 2;
-                $srcY = ($height - $minDim) / 2;
+                $srcX = intval(($width - $minDim) / 2);
+                $srcY = intval(($height - $minDim) / 2);
                 imagecopyresampled($dstImg, $srcImg, 0, 0, $srcX, $srcY, 200, 200, $minDim, $minDim);
                 imagejpeg($dstImg, $dest, 90);
                 imagedestroy($srcImg);
@@ -80,16 +81,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $error = 'Invalid image type. Allowed: jpg, jpeg, png, gif, webp.';
         }
-    } else if ($avatar_url !== '') {
+    } elseif ($avatar_url !== '') {
         $uploaded_avatar = $avatar_url;
     }
-    // Username validation and update
+
+    // Username validation
     if ($new_username && $new_username !== $user['username']) {
         if (!preg_match('/^[a-z0-9]{3,}$/', $new_username)) {
             $error = 'Username must be at least 3 characters, lowercase letters and numbers only.';
         } else {
             $stmt = $conn->prepare('SELECT id FROM users WHERE username = ? AND id != ?');
-            $stmt->bind_param('si', $new_username, $_SESSION['user_id']);
+            $stmt->bind_param('si', $new_username, $user_id);
             $stmt->execute();
             $stmt->store_result();
             if ($stmt->num_rows > 0) {
@@ -98,13 +100,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->close();
         }
     }
+
     // Password update
     if (!$error && $new_password) {
         if (strlen($new_password) < 8) {
             $error = 'New password must be at least 8 characters.';
         } else {
             $stmt = $conn->prepare('SELECT password FROM users WHERE id = ?');
-            $stmt->bind_param('i', $_SESSION['user_id']);
+            $stmt->bind_param('i', $user_id);
             $stmt->execute();
             $stmt->bind_result($db_password);
             $stmt->fetch();
@@ -114,39 +117,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
+
+    // Final update if no errors
     if (!$error) {
-        // Build update query
         $fields = ['display_name = ?', 'avatar_url = ?'];
         $params = [$display_name, $uploaded_avatar];
         $types = 'ss';
+
         if ($new_username && $new_username !== $user['username']) {
             $fields[] = 'username = ?';
             $params[] = $new_username;
             $types .= 's';
         }
+
         if ($new_password) {
             $fields[] = 'password = ?';
             $params[] = password_hash($new_password, PASSWORD_DEFAULT);
             $types .= 's';
         }
-        $params[] = $_SESSION['user_id'];
+
+        $params[] = $user_id;
         $types .= 'i';
+
         $sql = 'UPDATE users SET ' . implode(', ', $fields) . ' WHERE id = ?';
         $stmt = $conn->prepare($sql);
         $stmt->bind_param($types, ...$params);
         $stmt->execute();
         $stmt->close();
+
         $success = true;
         $_SESSION['display_name'] = $display_name;
-        if ($new_username && $new_username !== $user['username']) {
-            $user['username'] = $new_username;
-        }
         $user['display_name'] = $display_name;
         $user['avatar_url'] = $uploaded_avatar;
+        if ($new_username) $user['username'] = $new_username;
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 
@@ -158,11 +164,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Gwez - Live-Chat</title>
 </head>
 <style>
-        body {
-            font-family: 'Segoe UI', 'Arial', sans-serif;
-            background: linear-gradient(135deg, #e3f0ff 0%, #f9f9f9 100%);
-        }
+    body {
+        font-family: 'Segoe UI', 'Arial', sans-serif;
+        background: linear-gradient(135deg, #e3f0ff 0%, #f9f9f9 100%);
+    }
 </style>
+
 <body class="p-3">
     <?php include_once 'navbar.php'; ?>
     <div class="container mt-4" style="max-width: 90vw;">
@@ -170,7 +177,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="col-md-8 col-lg-6 w-100" style="max-width: 90vw;">
                 <div class="card shadow-sm rounded-4">
                     <div class="card-body">
-                        <h5 class="card-title text-center mb-3  ">Profile Settings</h5>
+                        <h5 class="card-title text-center mb-3">Profile Settings</h5>
                         <?php if ($success): ?>
                             <div class="alert alert-success">Profile updated successfully!</div>
                         <?php elseif ($error): ?>

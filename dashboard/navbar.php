@@ -1,3 +1,6 @@
+<?php
+    $test = 1;
+?>
 <style>
     .navbar {
         border-radius: 1rem;

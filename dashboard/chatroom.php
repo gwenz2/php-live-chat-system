@@ -1,6 +1,88 @@
+<?php
+// Start session first — no whitespace above this line!
+session_start();
+require_once '../db.php';
+require_once 'update_status.php';
+
+if (!isset($_SESSION['user_id'])) {
+    header('Location: ../index.php?msg=' . urlencode('Please log in to access the chatroom.'));
+    exit;
+}
+
+// Get the user to chat with
+$other_user_id = isset($_GET['user_id']) ? (int)$_GET['user_id'] : 0;
+$current_user_id = $_SESSION['user_id'];
+
+// Handle message sending early to prevent header error
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $other_user_id && isset($_POST['message']) && trim($_POST['message']) !== '') {
+    $msg_text = trim($_POST['message']);
+    $stmt = $conn->prepare('INSERT INTO messages (sender_id, receiver_id, message_text) VALUES (?, ?, ?)');
+    $stmt->bind_param('iis', $current_user_id, $other_user_id, $msg_text);
+    $stmt->execute();
+    $stmt->close();
+    // Redirect to avoid form resubmission
+    header('Location: chatroom.php?user_id=' . $other_user_id);
+    exit;
+}
+
+// Now safe to include HTML output
+include_once 'navbar.php';
+
+// Fetch other user's info
+$other_user = null;
+if ($other_user_id) {
+    $stmt = $conn->prepare('SELECT display_name, username FROM users WHERE id = ?');
+    $stmt->bind_param('i', $other_user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $other_user = $result->fetch_assoc();
+    $stmt->close();
+}
+
+// Fetch messages between users
+$messages = [];
+if ($other_user_id) {
+    $stmt = $conn->prepare('SELECT * FROM messages WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?) ORDER BY sent_at ASC');
+    $stmt->bind_param('iiii', $current_user_id, $other_user_id, $other_user_id, $current_user_id);
+    $stmt->execute();
+    $messages = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+}
+
+// Mark messages as read when opening chat
+if ($other_user_id) {
+    $stmt = $conn->prepare('UPDATE messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ? AND is_read = 0');
+    $stmt->bind_param('ii', $other_user_id, $current_user_id);
+    $stmt->execute();
+    $stmt->close();
+}
+
+// Fetch avatars
+$current_avatar = '../assets/user_male_80px.png';
+$other_avatar = '../assets/user_male_96px.png';
+
+$stmt = $conn->prepare('SELECT avatar_url FROM users WHERE id = ?');
+$stmt->bind_param('i', $current_user_id);
+$stmt->execute();
+$stmt->bind_result($avatar_url);
+if ($stmt->fetch() && $avatar_url) {
+    $current_avatar = htmlspecialchars($avatar_url);
+}
+$stmt->close();
+
+if ($other_user_id) {
+    $stmt = $conn->prepare('SELECT avatar_url FROM users WHERE id = ?');
+    $stmt->bind_param('i', $other_user_id);
+    $stmt->execute();
+    $stmt->bind_result($avatar_url);
+    if ($stmt->fetch() && $avatar_url) {
+        $other_avatar = htmlspecialchars($avatar_url);
+    }
+    $stmt->close();
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -15,85 +97,6 @@
         }
 </style>
 <body class="p-3">
-    <?php 
-    include_once 'navbar.php';
-    require_once '../db.php';
-    require_once 'update_status.php';
-
-    if (!isset($_SESSION['user_id'])) {
-        header('Location: ../index.php?msg=' . urlencode('Please log in to access the chatroom.'));
-        exit;
-    }
-
-    // Get the user to chat with
-    $other_user_id = isset($_GET['user_id']) ? (int)$_GET['user_id'] : 0;
-    $current_user_id = $_SESSION['user_id'];
-
-    // Fetch other user's info
-    $other_user = null;
-    if ($other_user_id) {
-        $stmt = $conn->prepare('SELECT display_name, username FROM users WHERE id = ?');
-        $stmt->bind_param('i', $other_user_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $other_user = $result->fetch_assoc();
-        $stmt->close();
-    }
-
-    // Fetch messages between the two users
-    $messages = [];
-    if ($other_user_id) {
-        $stmt = $conn->prepare('SELECT * FROM messages WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?) ORDER BY sent_at ASC');
-        $stmt->bind_param('iiii', $current_user_id, $other_user_id, $other_user_id, $current_user_id);
-        $stmt->execute();
-        $messages = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-        $stmt->close();
-    }
-
-    // Mark messages as read when the chat is opened
-    if ($other_user_id) {
-        $stmt = $conn->prepare('UPDATE messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ? AND is_read = 0');
-        $stmt->bind_param('ii', $other_user_id, $current_user_id);
-        $stmt->execute();
-        $stmt->close();
-    }
-
-    // Handle message sending
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && $other_user_id && isset($_POST['message']) && trim($_POST['message']) !== '') {
-        $msg_text = trim($_POST['message']);
-        $stmt = $conn->prepare('INSERT INTO messages (sender_id, receiver_id, message_text) VALUES (?, ?, ?)');
-        $stmt->bind_param('iis', $current_user_id, $other_user_id, $msg_text);
-        $stmt->execute();
-        $stmt->close();
-        // Redirect to avoid resubmission
-        header('Location: chatroom.php?user_id=' . $other_user_id);
-        exit;
-    }
-
-    // Fetch avatars for current user and other user
-    $current_avatar = '../assets/user_male_80px.png';
-    $other_avatar = '../assets/user_male_96px.png';
-    if (isset($_SESSION['user_id'])) {
-        $stmt = $conn->prepare('SELECT avatar_url FROM users WHERE id = ?');
-        $stmt->bind_param('i', $_SESSION['user_id']);
-        $stmt->execute();
-        $stmt->bind_result($avatar_url);
-        if ($stmt->fetch() && $avatar_url) {
-            $current_avatar = htmlspecialchars($avatar_url);
-        }
-        $stmt->close();
-    }
-    if ($other_user_id) {
-        $stmt = $conn->prepare('SELECT avatar_url FROM users WHERE id = ?');
-        $stmt->bind_param('i', $other_user_id);
-        $stmt->execute();
-        $stmt->bind_result($avatar_url);
-        if ($stmt->fetch() && $avatar_url) {
-            $other_avatar = htmlspecialchars($avatar_url);
-        }
-        $stmt->close();
-    }
-    ?>
     <div class="container mt-3" style="max-width: 90vw;">
         <div class="row justify-content-center">
             <div class="col-md-8 col-lg-6 w-100" style="max-width: 90vw;">
