@@ -154,51 +154,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../assets/css/bootstrap.min.css">
+    <link rel="icon" href="../iconMO.svg" type="image/svg+xml">
     <title>Gwez - Live-Chat</title>
 </head>
+<style>
+        body {
+            font-family: 'Segoe UI', 'Arial', sans-serif;
+            background: linear-gradient(135deg, #e3f0ff 0%, #f9f9f9 100%);
+        }
+</style>
 <body class="p-3">
     <?php include_once 'navbar.php'; ?>
-    <div class="container mt-5" style="max-width: 90vw;">
+    <div class="container mt-4" style="max-width: 90vw;">
         <div class="row justify-content-center">
             <div class="col-md-8 col-lg-6 w-100" style="max-width: 90vw;">
                 <div class="card shadow-sm rounded-4">
                     <div class="card-body">
-                        <h5 class="card-title text-center mb-4">Profile Settings</h5>
+                        <h5 class="card-title text-center mb-3  ">Profile Settings</h5>
                         <?php if ($success): ?>
                             <div class="alert alert-success">Profile updated successfully!</div>
                         <?php elseif ($error): ?>
                             <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
                         <?php endif; ?>
-                        <form method="POST" class="mb-3" enctype="multipart/form-data">
-                            <div class="mb-3 text-center">
+                        <form method="POST" class="mb-2" enctype="multipart/form-data">
+                            <div class="mb-2 text-center">
                                 <img src="<?php echo htmlspecialchars($user['avatar_url'] ?? '../assets/user_male_80px.png'); ?>" class="rounded-circle border border-primary" width="80" height="80" alt="Avatar">
                             </div>
-                            <div class="mb-3">
+                            <div class="mb-2">
                                 <label for="display_name" class="form-label">Display Name</label>
                                 <input type="text" class="form-control" id="display_name" name="display_name" value="<?php echo htmlspecialchars($user['display_name'] ?? ''); ?>">
                             </div>
-                            <div class="mb-3">
+                            <div class="mb-2">
                                 <label for="username" class="form-label">Username</label>
                                 <input type="text" class="form-control" id="username" name="username" value="<?php echo htmlspecialchars($user['username'] ?? ''); ?>">
                                 <div class="form-text">Lowercase letters and numbers, at least 3 characters. Leave blank to keep current.</div>
                             </div>
-                            <div class="mb-3">
+                            <div class="mb-2">
                                 <label for="current_password" class="form-label">Current Password</label>
                                 <input type="password" class="form-control" id="current_password" name="current_password" autocomplete="off">
                                 <div class="form-text">Required only to change password.</div>
                             </div>
-                            <div class="mb-3">
+                            <div class="mb-2">
                                 <label for="new_password" class="form-label">New Password</label>
                                 <input type="password" class="form-control" id="new_password" name="new_password" autocomplete="off">
                                 <div class="form-text">At least 8 characters. Leave blank to keep current.</div>
                             </div>
-                            <div class="mb-3">
+                            <div class="mb-2">
                                 <label for="avatar_file" class="form-label">Upload Avatar Image</label>
                                 <input type="file" class="form-control" id="avatar_file" name="avatar_file" accept="image/*">
                             </div>
                             <button type="submit" class="btn btn-primary w-100">Update Profile</button>
                         </form>
-                        <div class="text-center text-muted small">Username: <strong><?php echo htmlspecialchars($user['username'] ?? ''); ?></strong></div>
+                        <div class="text-center text-muted small"><strong>OneTalk - by Gwen Balajediong</strong></div>
                     </div>
                 </div>
             </div>

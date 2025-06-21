@@ -5,8 +5,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../assets/css/bootstrap.min.css">
+    <link rel="icon" href="../iconMO.svg" type="image/svg+xml">
     <title>Gwez - Live-Chat</title>
 </head>
+<style>
+        body {
+            font-family: 'Segoe UI', 'Arial', sans-serif;
+            background: linear-gradient(135deg, #e3f0ff 0%, #f9f9f9 100%);
+        }
+</style>
 <body class="p-3">
     <?php 
     include_once 'navbar.php';
@@ -87,10 +94,10 @@
         $stmt->close();
     }
     ?>
-    <div class="container mt-5" style="max-width: 90vw;">
+    <div class="container mt-3" style="max-width: 90vw;">
         <div class="row justify-content-center">
             <div class="col-md-8 col-lg-6 w-100" style="max-width: 90vw;">
-                <div class="card shadow-sm rounded-4" style="height: 82vh; display: flex; flex-direction: column;">
+                <div class="card shadow-sm rounded-4" style="height: 86vh; display: flex; flex-direction: column;">
                     <!-- Chat Header -->
                     <div class="card-header bg-primary text-white d-flex align-items-center gap-3 rounded-top-4">
                         <a href="index.php" class="btn btn-light btn-sm me-2">&larr;</a>

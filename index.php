@@ -5,7 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="assets/css/bootstrap.min.css">
-    <title>Gwez - Login you account</title>
+    <link rel="icon" href="iconMO.svg" type="image/svg+xml">
+    <title>OneTalk - Login to Your Account</title>
     <style>
         body {
             font-family: 'Segoe UI', 'Arial', sans-serif;
@@ -66,7 +67,7 @@
             <div class="col-6">
                 <div class="card shadow-sm">
                     <div class="card-body">
-                        <h1 class="card-title ">Login your account</h1>
+                        <h1 class="card-title">Welcome Back to OneTalk</h1>
                         <?php if (isset($_GET['msg'])): ?>
                             <div class="alert alert-info text-center mt-3"><?php echo htmlspecialchars($_GET['msg']); ?></div>
                         <?php endif; ?>

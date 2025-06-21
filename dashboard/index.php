@@ -43,11 +43,18 @@ if (isset($_SESSION['user_id'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../assets/css/bootstrap.min.css">
+    <link rel="icon" href="../iconMO.svg" type="image/svg+xml">
     <title>Gwez - Live-Chat</title>
 </head>
+<style>
+        body {
+            font-family: 'Segoe UI', 'Arial', sans-serif;
+            background: linear-gradient(135deg, #e3f0ff 0%, #f9f9f9 100%);
+        }
+</style>
 <body class="bg-light p-3">
     <?php include_once 'navbar.php';?>
-    <div class="container mt-5" style="max-width: 90vw;">
+    <div class="container mt-4" style="max-width: 90vw;">
         <div class="row mb-3">
             <div class="col d-flex justify-content-end align-items-center">
                 <div class="bg-white shadow-sm rounded-pill px-3 py-2 d-flex align-items-center gap-2" style="min-width: 180px;">

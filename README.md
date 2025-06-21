@@ -1,24 +1,42 @@
-# Gwez Live Chat
+# GwezTalk - PHP Live Chat System
 
-This project is a work-in-progress PHP & MySQL live chat application. It aims to provide user registration, login, and simple 1-to-1 messaging between users, with a modern Bootstrap 5 interface.
-
-**Current status:**
-- User authentication (register/login) is implemented.
-- Users can see a list of other users and start a chat.
-- 1-to-1 chatroom UI and message storage are working.
-
-**Planned features:**
-- Real-time updates (AJAX or WebSocket)
-- User avatars and online status
-
-Feel free to explore, test, and contribute as the project evolves!
-
-## Features
-- User registration and login
-- Dashboard with contact list (all users except yourself)
-- 1-to-1 chatroom with message history
-- Bootstrap 5 responsive UI
-
+**GwezTalk** (also known as **OneTalk**) is a fully working, modern live chat system built using **PHP**, **MySQL**, **GitHub Copilot**, and **Bootstrap 5**. It enables user registration, login, and 1-to-1 private messaging with real-time status updates and avatar support.
 
 ---
-Feel free to improve or extend this project!
+
+## ✅ Features
+
+- 🧑‍💼 User registration & secure login  
+- 🧑‍🤝‍🧑 User dashboard with contact list  
+- 💬 One-to-one private messaging system  
+- 🟢 Online/offline status tracking  
+- 👤 Profile editing with custom avatar  
+- ⌚ Real-time message, read and seen feature  
+- 📱 Responsive Bootstrap 5 interface  
+
+---
+
+## 📸 Screenshots
+
+### 🔐 Login Page
+![Login Screenshot](screenshots/ss1.png)
+
+### 🗂️ Dashboard
+![Dashboard Screenshot](screenshots/ss2.png)
+
+### ⚙️ Profile Settings
+![Settings Screenshot](screenshots/ss3.png)
+
+---
+
+## 🙌 Credits
+
+**Project Author:** [Gwen Balajediong](https://github.com/gwenz2)  
+**Project Name:** GwezTalk (aka OneTalk)  
+**Built With:** PHP, MySQL, Bootstrap 5, GitHub Copilot  
+**UI Inspired by:** Modern messaging platforms (Messenger, WhatsApp)  
+**Icons & Assets:** Bootstrap Icons, FlatIcon, custom avatars
+
+---
+
+> ⭐ If you like this project, consider starring it on GitHub or contributing a feature!
