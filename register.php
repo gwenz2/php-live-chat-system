@@ -7,7 +7,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username']);
     $display_name = trim($_POST['display_name']);
     $password = $_POST['password'];
-    $avatar_url = isset($_POST['avatar_url']) && trim($_POST['avatar_url']) !== '' ? trim($_POST['avatar_url']) : 'assets/user_male_80px.png';
+    $avatar_url = isset($_POST['avatar_url']) && trim($_POST['avatar_url']) !== '' ? trim($_POST['avatar_url']) : '../assets/user_male_80px.png';
 
     // Basic validation
     if (empty($username) || empty($display_name) || empty($password)) {

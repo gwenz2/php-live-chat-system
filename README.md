@@ -19,13 +19,13 @@
 ## 📸 Screenshots
 
 ### 🔐 Login Page
-![Login Screenshot](screenshots/ss1.png)
+![Login Screenshot](Screenshots/ss1.png)
 
 ### 🗂️ Dashboard
-![Dashboard Screenshot](screenshots/ss2.png)
+![Dashboard Screenshot](Screenshots/ss2.png)
 
 ### ⚙️ Profile Settings
-![Settings Screenshot](screenshots/ss3.png)
+![Settings Screenshot](Screenshots/ss3.png)
 
 ---
 
