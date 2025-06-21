@@ -18,10 +18,17 @@ $sql = "SELECT id, display_name, username, last_seen, status, avatar_url,
         ORDER BY sent_at DESC LIMIT 1) AS last_is_read,
     (SELECT sender_id FROM messages
         WHERE (sender_id = users.id AND receiver_id = ?) OR (sender_id = ? AND receiver_id = users.id)
-        ORDER BY sent_at DESC LIMIT 1) AS last_sender_id
-    FROM users WHERE id != ?";
+        ORDER BY sent_at DESC LIMIT 1) AS last_sender_id,
+    (SELECT sent_at FROM messages
+        WHERE (sender_id = users.id AND receiver_id = ?) OR (sender_id = ? AND receiver_id = users.id)
+        ORDER BY sent_at DESC LIMIT 1) AS last_message_time
+    FROM users WHERE id != ?
+    AND (
+        (SELECT COUNT(*) FROM messages WHERE (sender_id = users.id AND receiver_id = ?) OR (sender_id = ? AND receiver_id = users.id)) > 0
+    )
+    ORDER BY last_message_time IS NULL, last_message_time DESC";
 $stmt = $conn->prepare($sql);
-$stmt->bind_param('iiiiiii', $current_user_id, $current_user_id, $current_user_id, $current_user_id, $current_user_id, $current_user_id, $current_user_id);
+$stmt->bind_param('iiiiiiiiiii', $current_user_id, $current_user_id, $current_user_id, $current_user_id, $current_user_id, $current_user_id, $current_user_id, $current_user_id, $current_user_id, $current_user_id, $current_user_id);
 $stmt->execute();
 $result = $stmt->get_result();
 $users = [];

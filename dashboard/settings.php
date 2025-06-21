@@ -37,10 +37,13 @@ if (isset($_SESSION['user_id'])) {
 // Handle profile update
 $success = false;
 $error = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['display_name'])) {
-    $display_name = trim($_POST['display_name']);
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $display_name = trim($_POST['display_name'] ?? $user['display_name']);
     $avatar_url = trim($_POST['avatar_url'] ?? '');
     $uploaded_avatar = $user['avatar_url'] ?? '';
+    $new_username = trim($_POST['username'] ?? '');
+    $current_password = $_POST['current_password'] ?? '';
+    $new_password = $_POST['new_password'] ?? '';
     // Handle file upload and process image
     if (isset($_FILES['avatar_file']) && $_FILES['avatar_file']['error'] === UPLOAD_ERR_OK) {
         $fileTmp = $_FILES['avatar_file']['tmp_name'];
@@ -49,7 +52,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['display_name'])) {
         if (in_array($fileExt, $allowed)) {
             $newName = 'avatar_' . $_SESSION['user_id'] . '_' . time() . '.jpg';
             $dest = '../assets/images/' . $newName;
-            // Resize and convert to JPG 200x200
             $srcImg = null;
             if ($fileExt === 'jpg' || $fileExt === 'jpeg') {
                 $srcImg = imagecreatefromjpeg($fileTmp);
@@ -64,7 +66,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['display_name'])) {
                 $dstImg = imagecreatetruecolor(200, 200);
                 $width = imagesx($srcImg);
                 $height = imagesy($srcImg);
-                // Crop to square
                 $minDim = min($width, $height);
                 $srcX = ($width - $minDim) / 2;
                 $srcY = ($height - $minDim) / 2;
@@ -82,15 +83,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['display_name'])) {
     } else if ($avatar_url !== '') {
         $uploaded_avatar = $avatar_url;
     }
-    if ($display_name === '') {
-        $error = 'Display name cannot be empty.';
-    } else if (!$error) {
-        $stmt = $conn->prepare('UPDATE users SET display_name = ?, avatar_url = ? WHERE id = ?');
-        $stmt->bind_param('ssi', $display_name, $uploaded_avatar, $_SESSION['user_id']);
+    // Username validation and update
+    if ($new_username && $new_username !== $user['username']) {
+        if (!preg_match('/^[a-z0-9]{3,}$/', $new_username)) {
+            $error = 'Username must be at least 3 characters, lowercase letters and numbers only.';
+        } else {
+            $stmt = $conn->prepare('SELECT id FROM users WHERE username = ? AND id != ?');
+            $stmt->bind_param('si', $new_username, $_SESSION['user_id']);
+            $stmt->execute();
+            $stmt->store_result();
+            if ($stmt->num_rows > 0) {
+                $error = 'Username already taken.';
+            }
+            $stmt->close();
+        }
+    }
+    // Password update
+    if (!$error && $new_password) {
+        if (strlen($new_password) < 8) {
+            $error = 'New password must be at least 8 characters.';
+        } else {
+            $stmt = $conn->prepare('SELECT password FROM users WHERE id = ?');
+            $stmt->bind_param('i', $_SESSION['user_id']);
+            $stmt->execute();
+            $stmt->bind_result($db_password);
+            $stmt->fetch();
+            $stmt->close();
+            if (!password_verify($current_password, $db_password)) {
+                $error = 'Current password is incorrect.';
+            }
+        }
+    }
+    if (!$error) {
+        // Build update query
+        $fields = ['display_name = ?', 'avatar_url = ?'];
+        $params = [$display_name, $uploaded_avatar];
+        $types = 'ss';
+        if ($new_username && $new_username !== $user['username']) {
+            $fields[] = 'username = ?';
+            $params[] = $new_username;
+            $types .= 's';
+        }
+        if ($new_password) {
+            $fields[] = 'password = ?';
+            $params[] = password_hash($new_password, PASSWORD_DEFAULT);
+            $types .= 's';
+        }
+        $params[] = $_SESSION['user_id'];
+        $types .= 'i';
+        $sql = 'UPDATE users SET ' . implode(', ', $fields) . ' WHERE id = ?';
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param($types, ...$params);
         $stmt->execute();
         $stmt->close();
         $success = true;
         $_SESSION['display_name'] = $display_name;
+        if ($new_username && $new_username !== $user['username']) {
+            $user['username'] = $new_username;
+        }
         $user['display_name'] = $display_name;
         $user['avatar_url'] = $uploaded_avatar;
     }
@@ -125,7 +175,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['display_name'])) {
                             </div>
                             <div class="mb-3">
                                 <label for="display_name" class="form-label">Display Name</label>
-                                <input type="text" class="form-control" id="display_name" name="display_name" value="<?php echo htmlspecialchars($user['display_name'] ?? ''); ?>" required>
+                                <input type="text" class="form-control" id="display_name" name="display_name" value="<?php echo htmlspecialchars($user['display_name'] ?? ''); ?>">
+                            </div>
+                            <div class="mb-3">
+                                <label for="username" class="form-label">Username</label>
+                                <input type="text" class="form-control" id="username" name="username" value="<?php echo htmlspecialchars($user['username'] ?? ''); ?>">
+                                <div class="form-text">Lowercase letters and numbers, at least 3 characters. Leave blank to keep current.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="current_password" class="form-label">Current Password</label>
+                                <input type="password" class="form-control" id="current_password" name="current_password" autocomplete="off">
+                                <div class="form-text">Required only to change password.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="new_password" class="form-label">New Password</label>
+                                <input type="password" class="form-control" id="new_password" name="new_password" autocomplete="off">
+                                <div class="form-text">At least 8 characters. Leave blank to keep current.</div>
                             </div>
                             <div class="mb-3">
                                 <label for="avatar_file" class="form-label">Upload Avatar Image</label>

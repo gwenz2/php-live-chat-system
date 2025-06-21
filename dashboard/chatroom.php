@@ -11,7 +11,7 @@
     <?php 
     include_once 'navbar.php';
     require_once '../db.php';
-    session_start();
+    require_once 'update_status.php';
 
     if (!isset($_SESSION['user_id'])) {
         header('Location: ../index.php?msg=' . urlencode('Please log in to access the chatroom.'));
@@ -90,7 +90,7 @@
     <div class="container mt-5" style="max-width: 90vw;">
         <div class="row justify-content-center">
             <div class="col-md-8 col-lg-6 w-100" style="max-width: 90vw;">
-                <div class="card shadow-sm rounded-4" style="height: 70vh; display: flex; flex-direction: column;">
+                <div class="card shadow-sm rounded-4" style="height: 82vh; display: flex; flex-direction: column;">
                     <!-- Chat Header -->
                     <div class="card-header bg-primary text-white d-flex align-items-center gap-3 rounded-top-4">
                         <a href="index.php" class="btn btn-light btn-sm me-2">&larr;</a>
