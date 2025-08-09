@@ -158,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../assets/css/bootstrap.min.css">
     <link rel="icon" href="../iconMO.svg" type="image/svg+xml">
-    <title>Gwez - Live-Chat</title>
+    <title>OneTalk - Setting</title>
 </head>
 <style>
     body {

@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bind_param('ii', $current_user_id, $friend_id);
             $stmt->execute();
             $stmt->close();
-            $msg = 'Friend request sent!';
+            $msg = 'Buddy request sent!';
         } else {
             $msg = 'Invalid user.';
         }
@@ -34,13 +34,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->bind_param('ii', $request_id, $current_user_id);
                 $stmt->execute();
                 $stmt->close();
-                $msg = 'Friend request accepted!';
+                $msg = 'Buddy request accepted!';
             } else {
                 $stmt = $conn->prepare("DELETE FROM friends WHERE id=? AND friend_id=? AND status='pending'");
                 $stmt->bind_param('ii', $request_id, $current_user_id);
                 $stmt->execute();
                 $stmt->close();
-                $msg = 'Friend request declined.';
+                $msg = 'Buddy request declined.';
             }
         } else {
             $msg = 'Invalid request.';

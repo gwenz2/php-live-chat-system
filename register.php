@@ -32,9 +32,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     VALUES (?, ?, ?, ?, 'offline', NOW(), NOW())";
             $stmt = $conn->prepare($sql);
             $stmt->bind_param("ssss", $username, $display_name, $password_hash, $avatar_url);
+            // After successful user insertion:
             if ($stmt->execute()) {
+                $new_user_id = $stmt->insert_id;
                 $stmt->close();
-                header('Location: index.php?msg=' . urlencode('Registration successful! You can now log in.'));
+
+                // Auto-friend with user 1 (optional)
+$friend_sql = "INSERT INTO friends (user_id, friend_id, status, created_at) VALUES (?, 11, 'accepted', NOW())";
+$friend_stmt = $conn->prepare($friend_sql);
+$friend_stmt->bind_param("i", $new_user_id);
+$friend_stmt->execute();
+$friend_stmt->close();
+
+
+                // Set session to log user in immediately
+                $_SESSION['user_id'] = $new_user_id;
+                $_SESSION['username'] = $username;
+                $_SESSION['display_name'] = $display_name;
+
+                // Redirect directly to dashboard
+                header('Location: dashboard/index.php');
                 exit;
             } else {
                 $stmt->close();
@@ -47,4 +64,3 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header('Location: signupForm.php?msg=' . urlencode('Invalid request.'));
     exit;
 }
-?>

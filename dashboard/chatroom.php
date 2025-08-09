@@ -42,7 +42,7 @@ $other_avatar = $other_user && $other_user['avatar_url'] ? htmlspecialchars($oth
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../assets/css/bootstrap.min.css">
     <link rel="icon" href="../iconMO.svg" type="image/svg+xml">
-    <title>Gwez - Live-Chat</title>
+    <title>OneTalk - Chatroom</title>
 </head>
 <style>
         body {
@@ -66,7 +66,12 @@ $other_avatar = $other_user && $other_user['avatar_url'] ? htmlspecialchars($oth
                         </div>
                     </div>
                     <!-- Chat Messages -->
-                    <div class="flex-grow-1 overflow-auto p-3" style="background: #f8fafc;" id="chat-box"></div>
+                    <div class="flex-grow-1 overflow-auto p-3 position-relative" style="background: #f8fafc;" id="chat-box">
+                        <div id="loadingMessage" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10;text-align:center;">
+                            <span class="spinner-border text-primary" role="status"></span>
+                            <div class="mt-2 fw-semibold">Loading...</div>
+                        </div>
+                    </div>
                     <!-- Chat Input -->
                     <div class="card-footer bg-white border-0 d-flex align-items-center gap-2 rounded-bottom-4">
                         <input type="text" class="form-control rounded-pill" placeholder="Type a message..." id="message" <?php if (!$other_user_id) echo 'disabled'; ?>>
@@ -77,94 +82,117 @@ $other_avatar = $other_user && $other_user['avatar_url'] ? htmlspecialchars($oth
         </div>
     </div>
     <script src="../assets/js/bootstrap.bundle.min.js"></script>
-    <script type="module">
-        // Pass PHP user info to JS
-        const currentUser = {
-            id: <?php echo json_encode($current_user_id); ?>,
-            name: <?php echo json_encode($_SESSION['display_name'] ?? $_SESSION['username']); ?>,
-            avatar: <?php echo json_encode($current_avatar); ?>
-        };
-        const otherUserId = <?php echo json_encode($other_user_id); ?>;
-        const otherUserAvatar = <?php echo json_encode($other_avatar); ?>;
+<script type="module">
+    const currentUser = {
+        id: <?php echo json_encode($current_user_id); ?>,
+        name: <?php echo json_encode($_SESSION['display_name'] ?? $_SESSION['username']); ?>,
+        avatar: <?php echo json_encode($current_avatar); ?>
+    };
+    const otherUserId = <?php echo json_encode($other_user_id); ?>;
+    const otherUserAvatar = <?php echo json_encode($other_avatar); ?>;
 
-        // Firebase config
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-        import { getDatabase, ref, push, onChildAdded, get, update } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+    import { getDatabase, ref, push, onChildAdded, get, update } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
 
-        const firebaseConfig = {
-          apiKey: "AIzaSyDXixUNrcWNE1telIVZ_0L5KGQWLrElIEE",
-          authDomain: "onetalk-116de.firebaseapp.com",
-          databaseURL: "https://onetalk-116de-default-rtdb.asia-southeast1.firebasedatabase.app",
-          projectId: "onetalk-116de",
-          storageBucket: "onetalk-116de.firebasestorage.app",
-          messagingSenderId: "175655177771",
-          appId: "1:175655177771:web:a95b4032228b4209eca46e",
-          measurementId: "G-B87YLF9WW4"
-        };
+    const firebaseConfig = {
+      apiKey: "AIzaSyDXixUNrcWNE1telIVZ_0L5KGQWLrElIEE",
+      authDomain: "onetalk-116de.firebaseapp.com",
+      databaseURL: "https://onetalk-116de-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "onetalk-116de",
+      storageBucket: "onetalk-116de.firebasestorage.app",
+      messagingSenderId: "175655177771",
+      appId: "1:175655177771:web:a95b4032228b4209eca46e",
+      measurementId: "G-B87YLF9WW4"
+    };
 
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
 
-        // Reference for messages between these two users
-        const chatRef = ref(db, `chats/${Math.min(currentUser.id, otherUserId)}_${Math.max(currentUser.id, otherUserId)}`);
+    const chatRef = ref(db, `chats/${Math.min(currentUser.id, otherUserId)}_${Math.max(currentUser.id, otherUserId)}`);
+    const loadingDiv = document.getElementById('loadingMessage');
+    const chatBox = document.getElementById("chat-box");
 
-        // Mark all messages sent to current user as read
-        function markMessagesAsRead() {
-            get(chatRef).then(snapshot => {
-                if (snapshot.exists()) {
-                    const updates = {};
-                    snapshot.forEach(childSnap => {
-                        const msg = childSnap.val();
-                        // If message is sent by other user and not yet read
-                        if (msg.sender_id == otherUserId && !msg.is_read) {
-                            updates[childSnap.key + "/is_read"] = true;
-                        }
-                    });
-                    if (Object.keys(updates).length > 0) {
-                        update(chatRef, updates);
-                    }
-                }
-            });
+    if (loadingDiv) loadingDiv.style.display = 'block';
+
+    let firstMessageLoaded = false;
+
+    // Check if there are existing messages
+    get(chatRef).then(snapshot => {
+        if (!snapshot.exists()) {
+            // No messages yet
+            if (loadingDiv) loadingDiv.style.display = 'none';
+            const noMsg = document.createElement("div");
+            noMsg.className = "text-center text-muted mt-5";
+            noMsg.innerHTML = "<em>No messages yet</em>";
+            chatBox.appendChild(noMsg);
+        } else {
+            // There are existing messages, hide loader and listen for updates
+            if (loadingDiv) loadingDiv.style.display = 'none';
         }
-        if (otherUserId) markMessagesAsRead();
+    });
 
-        // Send message
-        document.getElementById("send").addEventListener("click", () => {
-            const msg = document.getElementById("message").value.trim();
-            if (msg) {
-                push(chatRef, {
-                    sender_id: currentUser.id,
-                    sender_name: currentUser.name,
-                    sender_avatar: currentUser.avatar,
-                    message: msg,
-                    timestamp: Date.now(),
-                    is_read: false
+    // Live listener for new messages
+    onChildAdded(chatRef, (snapshot) => {
+        const msg = snapshot.val();
+        if (!firstMessageLoaded && loadingDiv) {
+            loadingDiv.style.display = 'none';
+            firstMessageLoaded = true;
+        }
+
+        const div = document.createElement("div");
+        div.className = msg.sender_id == currentUser.id ? "d-flex flex-row-reverse mb-3" : "d-flex mb-3";
+        div.innerHTML = `
+            <img src="${msg.sender_avatar}" class="rounded-circle ${msg.sender_id == currentUser.id ? 'ms-2' : 'me-2'}" width="36" height="36" alt="User">
+            <div>
+                <div class="${msg.sender_id == currentUser.id ? 'bg-primary text-white' : 'bg-white border'} rounded-3 p-2 px-3 mb-1">
+                    ${msg.message}
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <small class="text-muted">${new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
+                    ${msg.sender_id == currentUser.id && msg.is_read ? '<span class="text-success small ms-2" title="Read">Read</span>' : ''}
+                </div>
+            </div>
+        `;
+        chatBox.appendChild(div);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    });
+
+    // Mark all messages from other user as read
+    function markMessagesAsRead() {
+        get(chatRef).then(snapshot => {
+            if (snapshot.exists()) {
+                const updates = {};
+                snapshot.forEach(childSnap => {
+                    const msg = childSnap.val();
+                    if (msg.sender_id == otherUserId && !msg.is_read) {
+                        updates[childSnap.key + "/is_read"] = true;
+                    }
                 });
-                document.getElementById("message").value = "";
+                if (Object.keys(updates).length > 0) {
+                    update(chatRef, updates);
+                }
             }
         });
+    }
+    if (otherUserId) markMessagesAsRead();
 
-        // Receive messages
-        onChildAdded(chatRef, (snapshot) => {
-            const msg = snapshot.val();
-            const div = document.createElement("div");
-            div.className = msg.sender_id == currentUser.id ? "d-flex flex-row-reverse mb-3" : "d-flex mb-3";
-                div.innerHTML = `
-                    <img src="${msg.sender_avatar}" class="rounded-circle ${msg.sender_id == currentUser.id ? 'ms-2' : 'me-2'}" width="36" height="36" alt="User">
-                    <div>
-                        <div class="${msg.sender_id == currentUser.id ? 'bg-primary text-white' : 'bg-white border'} rounded-3 p-2 px-3 mb-1">
-                            ${msg.message}
-                        </div>
-                        <div class="d-flex align-items-center gap-2">
-                            <small class="text-muted">${new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</small>
-                            ${msg.sender_id == currentUser.id && msg.is_read ? '<span class="text-success small ms-2" title="Read">Read</span>' : ''}
-                        </div>
-                    </div>
-                `;
-            document.getElementById("chat-box").appendChild(div);
-            document.getElementById("chat-box").scrollTop = document.getElementById("chat-box").scrollHeight;
-        });
-    </script>
+    // Send message
+    document.getElementById("send").addEventListener("click", () => {
+        const msg = document.getElementById("message").value.trim();
+        if (msg) {
+            push(chatRef, {
+                sender_id: currentUser.id,
+                sender_name: currentUser.name,
+                sender_avatar: currentUser.avatar,
+                message: msg,
+                timestamp: Date.now(),
+                is_read: false
+            });
+            document.getElementById("message").value = "";
+        }
+    });
+</script>
+
 </body>
 
 </html>
