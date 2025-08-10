@@ -11,15 +11,21 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// Update last_seen and status for the current user on every page load
+// Enhanced online/offline status management
 if (isset($_SESSION['user_id'])) {
+    // Update current user's status to online and last_seen
     $stmt = $conn->prepare("UPDATE users SET last_seen = NOW(), status = 'online' WHERE id = ?");
     $stmt->bind_param('i', $_SESSION['user_id']);
     $stmt->execute();
     $stmt->close();
+    
+    // Set users to offline if their last_seen is older than 2 minutes
+    $offline_threshold = 2; // minutes
+    $stmt = $conn->prepare("UPDATE users SET status = 'offline' WHERE last_seen < DATE_SUB(NOW(), INTERVAL ? MINUTE) AND status != 'offline'");
+    $stmt->bind_param('i', $offline_threshold);
+    $stmt->execute();
+    $stmt->close();
 }
-
-// Set all users to offline if their last_seen is older than 1 minute (run on every dashboard load)
 
 // Fetch current user's avatar_url for welcome message
 $current_avatar = '../assets/user_male_80px.png';
@@ -49,6 +55,41 @@ if (isset($_SESSION['user_id'])) {
         font-family: 'Segoe UI', 'Arial', sans-serif;
         background: linear-gradient(135deg, #e3f0ff 0%, #f9f9f9 100%);
     }
+    
+    /* Enhanced status indicators */
+    .status-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 5px;
+        border: 2px solid white;
+        box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
+    }
+    
+    .status-online {
+        background-color: #28a745;
+        animation: pulse 2s infinite;
+    }
+    
+    .status-offline {
+        background-color: #6c757d;
+    }
+    
+    .status-away {
+        background-color: #ffc107;
+    }
+    
+    @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7); }
+        70% { box-shadow: 0 0 0 6px rgba(40, 167, 69, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); }
+    }
+    
+    .last-seen-time {
+        font-size: 11px;
+        color: #6c757d;
+    }
 </style>
 
 <body class="bg-light p-3">
@@ -65,6 +106,7 @@ if (isset($_SESSION['user_id'])) {
                 <div class="bg-white shadow-sm rounded-pill px-3 py-2 d-flex align-items-center gap-2" style="min-width: 50px;">
                     <img src="<?php echo $current_avatar; ?>" alt="User" width="32" height="32" class="rounded-circle border border-primary">
                     <span class="fw-semibold text-primary"><?php echo htmlspecialchars($_SESSION['display_name'] ?? $_SESSION['username']); ?></span>
+                    <span class="status-indicator status-online" title="Online"></span>
                 </div>
             </div>
         </div>
@@ -81,10 +123,8 @@ if (isset($_SESSION['user_id'])) {
                             <button class="btn btn-gradient px-4 py-2 fw-semibold rounded-pill shadow-sm" data-bs-toggle="modal" data-bs-target="#newChatModal">
                                 <i class="bi bi-plus-circle me-1"></i>
                             </button>
-                            <!-- Buddy Requests button removed -->
                         </div>
                     </div>
-                    <!-- Buddy Requests Modal removed -->
                 </div>
                 <div class="list-group list-group-flush position-relative" id="contactsList" style="min-height: 100px;">
                     <div id="loadingContacts" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10;text-align:center;">
@@ -99,26 +139,27 @@ if (isset($_SESSION['user_id'])) {
                     $check_sql = "SELECT COUNT(*) as total 
                         FROM friends 
                         WHERE (user_id = ? OR friend_id = ?)";
-                                $check_stmt = $conn->prepare($check_sql);
-                                $check_stmt->bind_param('ii', $current_user_id, $current_user_id);
-                                $check_stmt->execute();
-                                $check_result = $check_stmt->get_result();
-                                $total_connections = $check_result->fetch_assoc()['total'];
-                                $check_stmt->close();
+                    $check_stmt = $conn->prepare($check_sql);
+                    $check_stmt->bind_param('ii', $current_user_id, $current_user_id);
+                    $check_stmt->execute();
+                    $check_result = $check_stmt->get_result();
+                    $total_connections = $check_result->fetch_assoc()['total'];
+                    $check_stmt->close();
 
-                                // Now fetch accepted buddies
-                                $sql = "SELECT u.id, u.display_name, u.username, u.avatar_url, u.status 
-                    FROM users u
-                    JOIN friends f ON (
-                        (f.user_id = ? AND f.friend_id = u.id) 
-                        OR (f.friend_id = ? AND f.user_id = u.id)
-                    )
-                    WHERE f.status = 'accepted' AND u.id != ?";
+                    // Enhanced query with last_seen information
+                    $sql = "SELECT u.id, u.display_name, u.username, u.avatar_url, u.status, u.last_seen,
+                                   TIMESTAMPDIFF(MINUTE, u.last_seen, NOW()) as minutes_offline
+                            FROM users u
+                            JOIN friends f ON (
+                                (f.user_id = ? AND f.friend_id = u.id) 
+                                OR (f.friend_id = ? AND f.user_id = u.id)
+                            )
+                            WHERE f.status = 'accepted' AND u.id != ?";
 
                     if ($search !== '') {
                         $sql .= " AND (u.display_name LIKE ? OR u.username LIKE ?)";
                     }
-                    $sql .= " ORDER BY u.display_name ASC";
+                    $sql .= " ORDER BY u.status DESC, u.last_seen DESC, u.display_name ASC";
 
                     $stmt = $conn->prepare($sql);
                     if ($search !== '') {
@@ -133,7 +174,7 @@ if (isset($_SESSION['user_id'])) {
                     if ($result->num_rows === 0) {
                         if ($total_connections == 0): ?>
                             <div class="text-center text-muted py-4">
-                                <p>You don’t have any buddies yet.</p>
+                                <p>You don't have any buddies yet.</p>
                             </div>
                         <?php else: ?>
                             <div class="text-center text-muted py-4">
@@ -145,23 +186,51 @@ if (isset($_SESSION['user_id'])) {
                             $avatar = ($user['avatar_url'] && trim($user['avatar_url']) !== '' && $user['avatar_url'] !== 'null')
                                 ? $user['avatar_url']
                                 : '../assets/user_male_80px.png';
+                            
                             $is_online = ($user['status'] === 'online');
+                            $is_away = ($user['status'] === 'away');
+                            $minutes_offline = $user['minutes_offline'];
+                            
+                            // Format last seen time
+                            $last_seen_text = '';
+                            if (!$is_online) {
+                                if ($minutes_offline < 60) {
+                                    $last_seen_text = $minutes_offline . 'm ago';
+                                } else if ($minutes_offline < 1440) { // less than 24 hours
+                                    $hours = floor($minutes_offline / 60);
+                                    $last_seen_text = $hours . 'h ago';
+                                } else {
+                                    $days = floor($minutes_offline / 1440);
+                                    $last_seen_text = $days . 'd ago';
+                                }
+                            }
                         ?>
                             <a href="chatroom.php?user_id=<?php echo $user['id']; ?>"
                                 class="list-group-item list-group-item-action d-flex align-items-center gap-3"
                                 data-contact-id="<?php echo $user['id']; ?>">
-                                <img src="<?php echo $avatar; ?>"
-                                    class="rounded-circle border border-primary"
-                                    width="50" height="50"
-                                    alt="<?php echo htmlspecialchars($user['display_name']); ?>">
+                                <div class="position-relative">
+                                    <img src="<?php echo $avatar; ?>"
+                                        class="rounded-circle border border-primary"
+                                        width="50" height="50"
+                                        alt="<?php echo htmlspecialchars($user['display_name']); ?>">
+                                    <!-- Status indicator overlay -->
+                                    <span class="status-indicator status-<?php echo $user['status']; ?> position-absolute" 
+                                          style="bottom: 2px; right: 2px;" 
+                                          title="<?php echo ucfirst($user['status']); ?>"></span>
+                                </div>
                                 <div class="flex-grow-1">
-                                    <div class="d-flex align-items-center mb-2">
-                                        <h6 class="mb-0 me-2"><?php echo htmlspecialchars($user['display_name']); ?></h6>
-                                        <span class="badge bg-<?php echo $is_online ? 'success' : 'secondary'; ?>">
+                                    <div class="d-flex align-items-center justify-content-between mb-1">
+                                        <h6 class="mb-0"><?php echo htmlspecialchars($user['display_name']); ?></h6>
+                                        <small class="last-seen-time">
+                                            <?php echo $is_online ? 'Online' : $last_seen_text; ?>
+                                        </small>
+                                    </div>
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <small class="text-muted">@<?php echo htmlspecialchars($user['username']); ?></small>
+                                        <span class="badge bg-<?php echo $is_online ? 'success' : ($is_away ? 'warning' : 'secondary'); ?> badge-sm">
                                             <?php echo ucfirst($user['status']); ?>
                                         </span>
                                     </div>
-                                    <small class="text-muted">@<?php echo htmlspecialchars($user['username']); ?></small>
                                     <div class="last-message text-dark-emphasis small mt-1"></div>
                                 </div>
                             </a>
@@ -169,14 +238,9 @@ if (isset($_SESSION['user_id'])) {
                     }
                     $stmt->close();
                     ?>
-
-
                 </div>
-                <!-- Search reload JS removed. Manual search only. -->
             </div>
         </div>
-    </div>
-    </div>
     </div>
 
     <!-- Start New Chat Modal -->
@@ -190,11 +254,14 @@ if (isset($_SESSION['user_id'])) {
                 <div class="modal-body bg-light">
                     <input type="text" id="searchNewUsers" class="form-control mb-3 rounded-pill px-3 shadow-sm" placeholder="🔍 Search users...">
                     <div id="newUsersList">
-                        <!-- Buddy Requests Section (pending requests sent to current user) -->
+                        <!-- Buddy Requests Section -->
                         <h6 class="mb-3 text-center text-warning"><i class="bi bi-person-check me-2"></i>Pending Buddy Requests</h6>
                         <?php
                         $current_user_id = $_SESSION['user_id'];
-                        $sql = "SELECT f.id AS request_id, u.id AS user_id, u.display_name, u.username, u.avatar_url FROM friends f JOIN users u ON f.user_id = u.id WHERE f.friend_id = ? AND f.status = 'pending'"; // buddy requests
+                        $sql = "SELECT f.id AS request_id, u.id AS user_id, u.display_name, u.username, u.avatar_url, u.status, u.last_seen 
+                                FROM friends f 
+                                JOIN users u ON f.user_id = u.id 
+                                WHERE f.friend_id = ? AND f.status = 'pending'";
                         $stmt = $conn->prepare($sql);
                         $stmt->bind_param('i', $current_user_id);
                         $stmt->execute();
@@ -202,12 +269,18 @@ if (isset($_SESSION['user_id'])) {
                         if ($result->num_rows > 0):
                             while ($row = $result->fetch_assoc()):
                                 $avatar = ($row['avatar_url'] && trim($row['avatar_url']) !== '' && $row['avatar_url'] !== 'null') ? $row['avatar_url'] : '../assets/user_male_80px.png';
+                                $is_online = ($row['status'] === 'online');
                         ?>
                                 <div class="list-group-item d-flex align-items-center gap-3 mb-2 bg-warning-subtle">
-                                    <img src="<?php echo $avatar; ?>" class="rounded-circle border border-primary" width="40" height="40" alt="<?php echo htmlspecialchars($row['display_name']); ?>">
+                                    <div class="position-relative">
+                                        <img src="<?php echo $avatar; ?>" class="rounded-circle border border-primary" width="40" height="40" alt="<?php echo htmlspecialchars($row['display_name']); ?>">
+                                        <span class="status-indicator status-<?php echo $row['status']; ?> position-absolute" 
+                                              style="bottom: 0; right: 0;" 
+                                              title="<?php echo ucfirst($row['status']); ?>"></span>
+                                    </div>
                                     <div class="flex-grow-1">
                                         <h6 class="mb-0"><?php echo htmlspecialchars($row['display_name']); ?></h6>
-                                        <small class="text-muted">@<?php echo htmlspecialchars($row['username']); ?></small>
+                                        <small class="text-muted">@<?php echo htmlspecialchars($row['username']); ?> • <?php echo $is_online ? 'Online' : 'Offline'; ?></small>
                                     </div>
                                     <form method="post" action="friend_action.php" class="ms-2">
                                         <input type="hidden" name="request_id" value="<?php echo $row['request_id']; ?>">
@@ -222,18 +295,20 @@ if (isset($_SESSION['user_id'])) {
                         $stmt->close();
                         ?>
                         <hr>
-                        <!-- New Chat Section (all users except self, with friend request status) -->
+                        <!-- New Chat Section with status indicators -->
                         <?php
-                        $sql = "SELECT id, display_name, username, avatar_url FROM users WHERE id != ? ORDER BY display_name ASC";
+                        $sql = "SELECT id, display_name, username, avatar_url, status, last_seen FROM users WHERE id != ? ORDER BY status DESC, display_name ASC";
                         $stmt = $conn->prepare($sql);
                         $stmt->bind_param('i', $current_user_id);
                         $stmt->execute();
                         $result = $stmt->get_result();
                         while ($user = $result->fetch_assoc()):
                             $avatar = ($user['avatar_url'] && trim($user['avatar_url']) !== '' && $user['avatar_url'] !== 'null') ? $user['avatar_url'] : '../assets/user_male_80px.png';
+                            $is_online = ($user['status'] === 'online');
+                            
                             // Check buddy status
                             $status = null;
-                            $friend_stmt = $conn->prepare("SELECT status FROM friends WHERE (user_id=? AND friend_id=?) OR (user_id=? AND friend_id=?) LIMIT 1"); // buddy status
+                            $friend_stmt = $conn->prepare("SELECT status FROM friends WHERE (user_id=? AND friend_id=?) OR (user_id=? AND friend_id=?) LIMIT 1");
                             $friend_stmt->bind_param('iiii', $current_user_id, $user['id'], $user['id'], $current_user_id);
                             $friend_stmt->execute();
                             $friend_stmt->bind_result($friend_status);
@@ -241,9 +316,11 @@ if (isset($_SESSION['user_id'])) {
                                 $status = $friend_status;
                             }
                             $friend_stmt->close();
-                            // If accepted, skip user (already buddies)
+                            
+                            // Skip if already buddies
                             if ($status === 'accepted') continue;
-                            // If user already sent you a buddy request, skip (already shown above)
+                            
+                            // Skip if user already sent you a buddy request
                             $pending_to_me_stmt = $conn->prepare("SELECT id FROM friends WHERE user_id=? AND friend_id=? AND status='pending' LIMIT 1");
                             $pending_to_me_stmt->bind_param('ii', $user['id'], $current_user_id);
                             $pending_to_me_stmt->execute();
@@ -255,10 +332,15 @@ if (isset($_SESSION['user_id'])) {
                             $pending_to_me_stmt->close();
                         ?>
                             <div class="list-group-item d-flex align-items-center gap-3 mb-2">
-                                <img src="<?php echo $avatar; ?>" class="rounded-circle border border-primary" width="40" height="40" alt="<?php echo htmlspecialchars($user['display_name']); ?>">
+                                <div class="position-relative">
+                                    <img src="<?php echo $avatar; ?>" class="rounded-circle border border-primary" width="40" height="40" alt="<?php echo htmlspecialchars($user['display_name']); ?>">
+                                    <span class="status-indicator status-<?php echo $user['status']; ?> position-absolute" 
+                                          style="bottom: 0; right: 0;" 
+                                          title="<?php echo ucfirst($user['status']); ?>"></span>
+                                </div>
                                 <div class="flex-grow-1">
                                     <h6 class="mb-0"><?php echo htmlspecialchars($user['display_name']); ?></h6>
-                                    <small class="text-muted">@<?php echo htmlspecialchars($user['username']); ?></small>
+                                    <small class="text-muted">@<?php echo htmlspecialchars($user['username']); ?> • <?php echo $is_online ? 'Online' : 'Offline'; ?></small>
                                 </div>
                                 <?php if ($status === 'pending'): ?>
                                     <button class="btn btn-secondary btn-sm rounded-pill" disabled>Pending</button>
@@ -276,6 +358,7 @@ if (isset($_SESSION['user_id'])) {
             </div>
         </div>
     </div>
+
     <style>
         .btn-gradient {
             background: linear-gradient(90deg, #4f8cff 0%, #6f6fff 100%);
@@ -319,10 +402,13 @@ if (isset($_SESSION['user_id'])) {
         .modal-content {
             border-radius: 1.5rem;
         }
+
+        .badge-sm {
+            font-size: 0.7em;
+        }
     </style>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <script src="../assets/js/bootstrap.bundle.min.js"></script>
-    <!-- JS for New Chat Modal removed to allow PHP rendering of user list with ADD button -->
      
     <script type="module">
         import {
@@ -333,7 +419,9 @@ if (isset($_SESSION['user_id'])) {
             ref,
             query,
             limitToLast,
-            onValue
+            onValue,
+            serverTimestamp,
+            set
         } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
 
         const firebaseConfig = {
@@ -351,6 +439,53 @@ if (isset($_SESSION['user_id'])) {
 
         const currentUserId = <?php echo json_encode($_SESSION['user_id']); ?>;
 
+        // Enhanced heartbeat system for online status
+        function updateHeartbeat() {
+            // Update Firebase presence
+            const userStatusRef = ref(db, `users/${currentUserId}/status`);
+            set(userStatusRef, {
+                online: true,
+                lastSeen: serverTimestamp()
+            });
+            
+            // Update PHP backend
+            fetch('update_status.php', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({action: 'heartbeat'})
+            }).catch(console.error);
+        }
+
+        // Send heartbeat every 30 seconds
+        updateHeartbeat();
+        const heartbeatInterval = setInterval(updateHeartbeat, 30000);
+
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                // User switched tabs/minimized - set to away after 5 minutes
+                setTimeout(() => {
+                    if (document.hidden) {
+                        fetch('update_status.php', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({action: 'away'})
+                        });
+                    }
+                }, 300000); // 5 minutes
+            } else {
+                // User is back - set to online immediately
+                updateHeartbeat();
+            }
+        });
+
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            // Quick sync request to set offline
+            navigator.sendBeacon('update_status.php', JSON.stringify({action: 'offline'}));
+        });
+
+        // Load contacts with Firebase integration
         const contacts = Array.from(document.querySelectorAll('[data-contact-id]'));
         const contactData = [];
         let loadedCount = 0;
@@ -403,7 +538,11 @@ if (isset($_SESSION['user_id'])) {
                 onlyOnce: true
             });
         });
+
+        // Auto-refresh page every 2 minutes to sync status
+        setInterval(() => {
+            window.location.reload();
+        }, 120000);
     </script>
 </body>
-
 </html>
