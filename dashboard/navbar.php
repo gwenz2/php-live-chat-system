@@ -27,6 +27,22 @@
         border-radius: 0.5rem;
         border: none;
     }
+    @media (max-width: 991.98px) {
+
+    .navbar-brand {
+        font-weight: 700;
+        letter-spacing: 1px;
+        font-size: 1.25rem;
+    }
+    .navbar-nav {
+        margin-top: 0.5rem;
+    }
+    .navbar-nav .nav-link {
+        margin: 0.2rem 0; /* Remove large left/right margins on mobile */
+        text-align: center; /* Center links when stacked */
+    }
+}
+
 </style>
 <nav class="navbar navbar-expand-lg navbar-dark bg-primary border-radius mb-1">
         <div class="container">

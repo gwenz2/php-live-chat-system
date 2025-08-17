@@ -11,21 +11,7 @@ if (!isset($_SESSION['user_id'])) {
     exit;
 }
 
-// Enhanced online/offline status management
-if (isset($_SESSION['user_id'])) {
-    // Update current user's status to online and last_seen
-    $stmt = $conn->prepare("UPDATE users SET last_seen = NOW(), status = 'online' WHERE id = ?");
-    $stmt->bind_param('i', $_SESSION['user_id']);
-    $stmt->execute();
-    $stmt->close();
-    
-    // Set users to offline if their last_seen is older than 2 minutes
-    $offline_threshold = 2; // minutes
-    $stmt = $conn->prepare("UPDATE users SET status = 'offline' WHERE last_seen < DATE_SUB(NOW(), INTERVAL ? MINUTE) AND status != 'offline'");
-    $stmt->bind_param('i', $offline_threshold);
-    $stmt->execute();
-    $stmt->close();
-}
+// REMOVE: All PHP status management - Firebase handles this now
 
 // Fetch current user's avatar_url for welcome message
 $current_avatar = '../assets/user_male_80px.png';
@@ -90,6 +76,66 @@ if (isset($_SESSION['user_id'])) {
         font-size: 11px;
         color: #6c757d;
     }
+
+    .btn-gradient {
+        background: linear-gradient(90deg, #4f8cff 0%, #6f6fff 100%);
+        color: #fff;
+        border: none;
+        transition: box-shadow 0.2s;
+    }
+
+    .btn-gradient:hover,
+    .btn-gradient:focus {
+        box-shadow: 0 0 0 0.2rem #4f8cff44;
+        color: #fff;
+    }
+
+    #contactsList .list-group-item {
+        transition: background 0.15s, box-shadow 0.15s;
+        border-radius: 1rem;
+        margin-bottom: 0.5rem;
+        background: #fff;
+        box-shadow: 0 1px 4px #0001;
+    }
+
+    #contactsList .list-group-item:hover {
+        background: #f0f6ff;
+        box-shadow: 0 2px 8px #4f8cff22;
+    }
+
+    #newUsersList .list-group-item {
+        border-radius: 1rem;
+        margin-bottom: 0.5rem;
+        background: #fff;
+        box-shadow: 0 1px 4px #0001;
+        transition: background 0.15s, box-shadow 0.15s;
+    }
+
+    #newUsersList .list-group-item:hover {
+        background: #eaf2ff;
+        box-shadow: 0 2px 8px #4f8cff22;
+    }
+
+    .modal-content {
+        border-radius: 1.5rem;
+    }
+
+    .badge-sm {
+        font-size: 0.7em;
+    }
+    @media (max-width: 576px) {
+    #searchContacts {
+        max-width: 130px !important; /* narrower input on mobile */
+        font-size: 13px; /* slightly smaller text */
+        padding-left: 2px;
+        padding-right: 0px;
+    }
+    .btn-search {
+        padding-left: 2px;
+        padding-right: 2px;
+        font-size: 10px;
+    }
+}
 </style>
 
 <body class="bg-light p-3">
@@ -116,11 +162,15 @@ if (isset($_SESSION['user_id'])) {
                     <h5 class="card-title text-center mb-4">BUDDIES</h5>
                     <div class="d-flex flex-wrap align-items-center mb-2 justify-content-between">
                         <form method="get" class="d-flex align-items-center gap-2 mb-0" style="max-width: 350px;">
-                            <input type="text" name="search" id="searchContacts" class="form-control shadow-sm rounded-pill px-3" style="max-width: 220px;" placeholder="🔍 Search buddy..." value="<?php echo htmlspecialchars($_GET['search'] ?? ''); ?>">
-                            <button type="submit" class="btn btn-outline-primary rounded-pill px-3">Search</button>
+    <input type="text" name="search" id="searchContacts"
+        class="form-control shadow-sm rounded-pill px-1"
+        style="max-width: 210px;"
+        placeholder="🔍 Search buddy..."
+        value="<?php echo htmlspecialchars($_GET['search'] ?? ''); ?>">
+    <button type="submit" class="btn btn-outline-primary rounded-pill px-2 btn-search">Search</button>
                         </form>
                         <div class="d-flex gap-2">
-                            <button class="btn btn-gradient px-4 py-2 fw-semibold rounded-pill shadow-sm" data-bs-toggle="modal" data-bs-target="#newChatModal">
+                            <button class="btn btn-gradient px-4 py-1 fw-semibold rounded-pill shadow-sm" data-bs-toggle="modal" data-bs-target="#newChatModal">
                                 <i class="bi bi-plus-circle me-1"></i>
                             </button>
                         </div>
@@ -146,9 +196,8 @@ if (isset($_SESSION['user_id'])) {
                     $total_connections = $check_result->fetch_assoc()['total'];
                     $check_stmt->close();
 
-                    // Enhanced query with last_seen information
-                    $sql = "SELECT u.id, u.display_name, u.username, u.avatar_url, u.status, u.last_seen,
-                                   TIMESTAMPDIFF(MINUTE, u.last_seen, NOW()) as minutes_offline
+                    // SIMPLIFIED query - remove PHP status fields, Firebase will handle status
+                    $sql = "SELECT u.id, u.display_name, u.username, u.avatar_url
                             FROM users u
                             JOIN friends f ON (
                                 (f.user_id = ? AND f.friend_id = u.id) 
@@ -159,7 +208,7 @@ if (isset($_SESSION['user_id'])) {
                     if ($search !== '') {
                         $sql .= " AND (u.display_name LIKE ? OR u.username LIKE ?)";
                     }
-                    $sql .= " ORDER BY u.status DESC, u.last_seen DESC, u.display_name ASC";
+                    $sql .= " ORDER BY u.display_name ASC";
 
                     $stmt = $conn->prepare($sql);
                     if ($search !== '') {
@@ -186,54 +235,43 @@ if (isset($_SESSION['user_id'])) {
                             $avatar = ($user['avatar_url'] && trim($user['avatar_url']) !== '' && $user['avatar_url'] !== 'null')
                                 ? $user['avatar_url']
                                 : '../assets/user_male_80px.png';
-                            
-                            $is_online = ($user['status'] === 'online');
-                            $is_away = ($user['status'] === 'away');
-                            $minutes_offline = $user['minutes_offline'];
-                            
-                            // Format last seen time
-                            $last_seen_text = '';
-                            if (!$is_online) {
-                                if ($minutes_offline < 60) {
-                                    $last_seen_text = $minutes_offline . 'm ago';
-                                } else if ($minutes_offline < 1440) { // less than 24 hours
-                                    $hours = floor($minutes_offline / 60);
-                                    $last_seen_text = $hours . 'h ago';
-                                } else {
-                                    $days = floor($minutes_offline / 1440);
-                                    $last_seen_text = $days . 'd ago';
-                                }
-                            }
                         ?>
-                            <a href="chatroom.php?user_id=<?php echo $user['id']; ?>"
-                                class="list-group-item list-group-item-action d-flex align-items-center gap-3"
-                                data-contact-id="<?php echo $user['id']; ?>">
-                                <div class="position-relative">
-                                    <img src="<?php echo $avatar; ?>"
-                                        class="rounded-circle border border-primary"
-                                        width="50" height="50"
-                                        alt="<?php echo htmlspecialchars($user['display_name']); ?>">
-                                    <!-- Status indicator overlay -->
-                                    <span class="status-indicator status-<?php echo $user['status']; ?> position-absolute" 
-                                          style="bottom: 2px; right: 2px;" 
-                                          title="<?php echo ucfirst($user['status']); ?>"></span>
-                                </div>
-                                <div class="flex-grow-1">
-                                    <div class="d-flex align-items-center justify-content-between mb-1">
-                                        <h6 class="mb-0"><?php echo htmlspecialchars($user['display_name']); ?></h6>
-                                        <small class="last-seen-time">
-                                            <?php echo $is_online ? 'Online' : $last_seen_text; ?>
-                                        </small>
-                                    </div>
-                                    <div class="d-flex align-items-center justify-content-between">
-                                        <small class="text-muted">@<?php echo htmlspecialchars($user['username']); ?></small>
-                                        <span class="badge bg-<?php echo $is_online ? 'success' : ($is_away ? 'warning' : 'secondary'); ?> badge-sm">
-                                            <?php echo ucfirst($user['status']); ?>
-                                        </span>
-                                    </div>
-                                    <div class="last-message text-dark-emphasis small mt-1"></div>
-                                </div>
-                            </a>
+<form id="chat-form-<?php echo $user['id']; ?>" action="buddyroom.php" method="POST" style="margin:0; padding:0;">
+    <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
+    <a href="#" 
+       onclick="event.preventDefault(); document.getElementById('chat-form-<?php echo $user['id']; ?>').submit();" 
+       class="list-group-item list-group-item-action d-flex align-items-center gap-3"
+       data-contact-id="<?php echo $user['id']; ?>">
+
+        <div class="position-relative">
+            <img src="<?php echo $avatar; ?>"
+                class="rounded-circle border border-primary"
+                width="50" height="50"
+                alt="<?php echo htmlspecialchars($user['display_name']); ?>">
+            <!-- Status indicator -->
+            <span class="status-indicator status-offline position-absolute firebase-status" 
+                  style="bottom: 2px; right: 2px;" 
+                  title="Loading..."></span>
+        </div>
+
+        <div class="flex-grow-1">
+            <div class="d-flex align-items-center justify-content-between mb-1">
+                <h6 class="mb-0"><?php echo htmlspecialchars($user['display_name']); ?></h6>
+                <small class="last-seen-time firebase-last-seen">
+                    Loading...
+                </small>
+            </div>
+            <div class="d-flex align-items-center justify-content-between">
+                <small class="text-muted">@<?php echo htmlspecialchars($user['username']); ?></small>
+                <span class="badge bg-secondary badge-sm firebase-badge">
+                    Loading
+                </span>
+            </div>
+            <div class="last-message text-dark-emphasis small mt-1"></div>
+        </div>
+    </a>
+</form>
+
                     <?php endwhile;
                     }
                     $stmt->close();
@@ -258,7 +296,7 @@ if (isset($_SESSION['user_id'])) {
                         <h6 class="mb-3 text-center text-warning"><i class="bi bi-person-check me-2"></i>Pending Buddy Requests</h6>
                         <?php
                         $current_user_id = $_SESSION['user_id'];
-                        $sql = "SELECT f.id AS request_id, u.id AS user_id, u.display_name, u.username, u.avatar_url, u.status, u.last_seen 
+                        $sql = "SELECT f.id AS request_id, u.id AS user_id, u.display_name, u.username, u.avatar_url
                                 FROM friends f 
                                 JOIN users u ON f.user_id = u.id 
                                 WHERE f.friend_id = ? AND f.status = 'pending'";
@@ -269,18 +307,17 @@ if (isset($_SESSION['user_id'])) {
                         if ($result->num_rows > 0):
                             while ($row = $result->fetch_assoc()):
                                 $avatar = ($row['avatar_url'] && trim($row['avatar_url']) !== '' && $row['avatar_url'] !== 'null') ? $row['avatar_url'] : '../assets/user_male_80px.png';
-                                $is_online = ($row['status'] === 'online');
                         ?>
-                                <div class="list-group-item d-flex align-items-center gap-3 mb-2 bg-warning-subtle">
+                                <div class="list-group-item d-flex align-items-center gap-3 mb-2 bg-warning-subtle" data-modal-user-id="<?php echo $row['user_id']; ?>">
                                     <div class="position-relative">
                                         <img src="<?php echo $avatar; ?>" class="rounded-circle border border-primary" width="40" height="40" alt="<?php echo htmlspecialchars($row['display_name']); ?>">
-                                        <span class="status-indicator status-<?php echo $row['status']; ?> position-absolute" 
+                                        <span class="status-indicator status-offline position-absolute firebase-status-modal" 
                                               style="bottom: 0; right: 0;" 
-                                              title="<?php echo ucfirst($row['status']); ?>"></span>
+                                              title="Loading..."></span>
                                     </div>
                                     <div class="flex-grow-1">
                                         <h6 class="mb-0"><?php echo htmlspecialchars($row['display_name']); ?></h6>
-                                        <small class="text-muted">@<?php echo htmlspecialchars($row['username']); ?> • <?php echo $is_online ? 'Online' : 'Offline'; ?></small>
+                                        <small class="text-muted">@<?php echo htmlspecialchars($row['username']); ?> • <span class="firebase-status-text">Loading...</span></small>
                                     </div>
                                     <form method="post" action="friend_action.php" class="ms-2">
                                         <input type="hidden" name="request_id" value="<?php echo $row['request_id']; ?>">
@@ -295,16 +332,15 @@ if (isset($_SESSION['user_id'])) {
                         $stmt->close();
                         ?>
                         <hr>
-                        <!-- New Chat Section with status indicators -->
+                        <!-- New Chat Section with Firebase status -->
                         <?php
-                        $sql = "SELECT id, display_name, username, avatar_url, status, last_seen FROM users WHERE id != ? ORDER BY status DESC, display_name ASC";
+                        $sql = "SELECT id, display_name, username, avatar_url FROM users WHERE id != ? ORDER BY display_name ASC";
                         $stmt = $conn->prepare($sql);
                         $stmt->bind_param('i', $current_user_id);
                         $stmt->execute();
                         $result = $stmt->get_result();
                         while ($user = $result->fetch_assoc()):
                             $avatar = ($user['avatar_url'] && trim($user['avatar_url']) !== '' && $user['avatar_url'] !== 'null') ? $user['avatar_url'] : '../assets/user_male_80px.png';
-                            $is_online = ($user['status'] === 'online');
                             
                             // Check buddy status
                             $status = null;
@@ -331,16 +367,16 @@ if (isset($_SESSION['user_id'])) {
                             }
                             $pending_to_me_stmt->close();
                         ?>
-                            <div class="list-group-item d-flex align-items-center gap-3 mb-2">
+                            <div class="list-group-item d-flex align-items-center gap-3 mb-2" data-modal-user-id="<?php echo $user['id']; ?>">
                                 <div class="position-relative">
                                     <img src="<?php echo $avatar; ?>" class="rounded-circle border border-primary" width="40" height="40" alt="<?php echo htmlspecialchars($user['display_name']); ?>">
-                                    <span class="status-indicator status-<?php echo $user['status']; ?> position-absolute" 
+                                    <span class="status-indicator status-offline position-absolute firebase-status-modal" 
                                           style="bottom: 0; right: 0;" 
-                                          title="<?php echo ucfirst($user['status']); ?>"></span>
+                                          title="Loading..."></span>
                                 </div>
                                 <div class="flex-grow-1">
                                     <h6 class="mb-0"><?php echo htmlspecialchars($user['display_name']); ?></h6>
-                                    <small class="text-muted">@<?php echo htmlspecialchars($user['username']); ?> • <?php echo $is_online ? 'Online' : 'Offline'; ?></small>
+                                    <small class="text-muted">@<?php echo htmlspecialchars($user['username']); ?> • <span class="firebase-status-text">Loading...</span></small>
                                 </div>
                                 <?php if ($status === 'pending'): ?>
                                     <button class="btn btn-secondary btn-sm rounded-pill" disabled>Pending</button>
@@ -359,54 +395,6 @@ if (isset($_SESSION['user_id'])) {
         </div>
     </div>
 
-    <style>
-        .btn-gradient {
-            background: linear-gradient(90deg, #4f8cff 0%, #6f6fff 100%);
-            color: #fff;
-            border: none;
-            transition: box-shadow 0.2s;
-        }
-
-        .btn-gradient:hover,
-        .btn-gradient:focus {
-            box-shadow: 0 0 0 0.2rem #4f8cff44;
-            color: #fff;
-        }
-
-        #contactsList .list-group-item {
-            transition: background 0.15s, box-shadow 0.15s;
-            border-radius: 1rem;
-            margin-bottom: 0.5rem;
-            background: #fff;
-            box-shadow: 0 1px 4px #0001;
-        }
-
-        #contactsList .list-group-item:hover {
-            background: #f0f6ff;
-            box-shadow: 0 2px 8px #4f8cff22;
-        }
-
-        #newUsersList .list-group-item {
-            border-radius: 1rem;
-            margin-bottom: 0.5rem;
-            background: #fff;
-            box-shadow: 0 1px 4px #0001;
-            transition: background 0.15s, box-shadow 0.15s;
-        }
-
-        #newUsersList .list-group-item:hover {
-            background: #eaf2ff;
-            box-shadow: 0 2px 8px #4f8cff22;
-        }
-
-        .modal-content {
-            border-radius: 1.5rem;
-        }
-
-        .badge-sm {
-            font-size: 0.7em;
-        }
-    </style>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <script src="../assets/js/bootstrap.bundle.min.js"></script>
      
@@ -421,7 +409,8 @@ if (isset($_SESSION['user_id'])) {
             limitToLast,
             onValue,
             serverTimestamp,
-            set
+            set,
+            onDisconnect
         } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
 
         const firebaseConfig = {
@@ -438,54 +427,188 @@ if (isset($_SESSION['user_id'])) {
         const db = getDatabase(app);
 
         const currentUserId = <?php echo json_encode($_SESSION['user_id']); ?>;
+        const currentUserName = <?php echo json_encode($_SESSION['display_name'] ?? $_SESSION['username']); ?>;
+        const currentUserAvatar = <?php echo json_encode($current_avatar); ?>;
 
-        // Enhanced heartbeat system for online status
-        function updateHeartbeat() {
-            // Update Firebase presence
-            const userStatusRef = ref(db, `users/${currentUserId}/status`);
-            set(userStatusRef, {
-                online: true,
-                lastSeen: serverTimestamp()
-            });
+        let lastActivity = Date.now();
+        let isUserActive = true;
+        let isPageVisible = !document.hidden;
+
+        // Track user activity
+        function trackUserActivity() {
+            lastActivity = Date.now();
+            isUserActive = true;
+        }
+
+        ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'].forEach(event => {
+            document.addEventListener(event, trackUserActivity, { passive: true });
+        });
+
+        // Get user status
+        function getUserStatus() {
+            const now = Date.now();
+            const inactiveTime = now - lastActivity;
             
-            // Update PHP backend
-            fetch('update_status.php', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({action: 'heartbeat'})
+            if (!isPageVisible) {
+                return 'away';
+            }
+            
+            if (inactiveTime > 300000) { // 5 minutes
+                return 'away';
+            }
+            
+            return 'online';
+        }
+
+        // Update user status in Firebase
+        function updateUserStatus() {
+            const status = getUserStatus();
+            const userStatusRef = ref(db, `users/${currentUserId}/status`);
+            
+            set(userStatusRef, {
+                online: status !== 'offline',
+                status: status,
+                lastSeen: serverTimestamp(),
+                name: currentUserName,
+                avatar: currentUserAvatar,
+                timestamp: Date.now()
             }).catch(console.error);
         }
 
-        // Send heartbeat every 30 seconds
-        updateHeartbeat();
-        const heartbeatInterval = setInterval(updateHeartbeat, 30000);
+        // Initialize presence system
+        updateUserStatus();
+        const statusInterval = setInterval(updateUserStatus, 45000);
 
-        // Handle page visibility changes
+        // Handle page visibility
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                // User switched tabs/minimized - set to away after 5 minutes
-                setTimeout(() => {
-                    if (document.hidden) {
-                        fetch('update_status.php', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({action: 'away'})
-                        });
-                    }
-                }, 300000); // 5 minutes
+            isPageVisible = !document.hidden;
+            
+            if (isPageVisible) {
+                trackUserActivity();
+                updateUserStatus();
             } else {
-                // User is back - set to online immediately
-                updateHeartbeat();
+                setTimeout(() => {
+                    if (!isPageVisible) {
+                        const userStatusRef = ref(db, `users/${currentUserId}/status`);
+                        set(userStatusRef, {
+                            online: true,
+                            status: 'away',
+                            lastSeen: serverTimestamp(),
+                            name: currentUserName,
+                            avatar: currentUserAvatar,
+                            timestamp: Date.now()
+                        }).catch(console.error);
+                    }
+                }, 30000); // 30 seconds delay
             }
         });
 
-        // Handle page unload
-        window.addEventListener('beforeunload', () => {
-            // Quick sync request to set offline
-            navigator.sendBeacon('update_status.php', JSON.stringify({action: 'offline'}));
+        // Set up disconnect handler
+        const disconnectRef = onDisconnect(ref(db, `users/${currentUserId}/status`));
+        disconnectRef.set({
+            online: false,
+            status: 'offline',
+            lastSeen: serverTimestamp(),
+            name: currentUserName,
+            avatar: currentUserAvatar,
+            timestamp: Date.now()
+        }).catch(console.error);
+
+        // Function to update status UI elements
+        function updateStatusUI(userId, status) {
+            const isOnline = status && status.online === true;
+            const userStatus = status ? (status.status || 'offline') : 'offline';
+            
+            // Update main contacts list
+            const contactElements = document.querySelectorAll(`[data-contact-id="${userId}"]`);
+            contactElements.forEach(element => {
+                const statusIndicator = element.querySelector('.firebase-status');
+                const lastSeenEl = element.querySelector('.firebase-last-seen');
+                const badgeEl = element.querySelector('.firebase-badge');
+                
+                if (statusIndicator) {
+                    statusIndicator.className = `status-indicator status-${isOnline ? userStatus : 'offline'} position-absolute firebase-status`;
+                    statusIndicator.title = userStatus.charAt(0).toUpperCase() + userStatus.slice(1);
+                }
+                
+                if (lastSeenEl && badgeEl) {
+                    let statusText = 'Offline';
+                    let badgeClass = 'bg-secondary';
+                    
+                    if (isOnline) {
+                        switch (userStatus) {
+                            case 'online':
+                                statusText = 'Online';
+                                badgeClass = 'bg-success';
+                                break;
+                            case 'away':
+                                statusText = 'Away';
+                                badgeClass = 'bg-warning';
+                                break;
+                            default:
+                                statusText = 'Online';
+                                badgeClass = 'bg-success';
+                        }
+                    } else if (status && status.lastSeen) {
+                        const now = Date.now();
+                        const lastSeenTime = typeof status.lastSeen === 'number' ? status.lastSeen : now;
+                        const minutesOffline = Math.floor((now - lastSeenTime) / 60000);
+                        
+                        if (minutesOffline < 1) {
+                            statusText = 'Just now';
+                        } else if (minutesOffline < 60) {
+                            statusText = `${minutesOffline}m ago`;
+                        } else if (minutesOffline < 1440) {
+                            const hours = Math.floor(minutesOffline / 60);
+                            statusText = `${hours}h ago`;
+                        } else {
+                            const days = Math.floor(minutesOffline / 1440);
+                            statusText = `${days}d ago`;
+                        }
+                    }
+                    
+                    lastSeenEl.textContent = statusText;
+                    badgeEl.className = `badge ${badgeClass} badge-sm firebase-badge`;
+                    badgeEl.textContent = userStatus.charAt(0).toUpperCase() + userStatus.slice(1);
+                }
+            });
+            
+            // Update modal elements
+            const modalElements = document.querySelectorAll(`[data-modal-user-id="${userId}"]`);
+            modalElements.forEach(element => {
+                const statusIndicator = element.querySelector('.firebase-status-modal');
+                const statusText = element.querySelector('.firebase-status-text');
+                
+                if (statusIndicator) {
+                    statusIndicator.className = `status-indicator status-${isOnline ? userStatus : 'offline'} position-absolute firebase-status-modal`;
+                    statusIndicator.title = userStatus.charAt(0).toUpperCase() + userStatus.slice(1);
+                }
+                
+                if (statusText) {
+                    statusText.textContent = isOnline ? userStatus.charAt(0).toUpperCase() + userStatus.slice(1) : 'Offline';
+                }
+            });
+        }
+
+        // Monitor all users' status
+        const allUserIds = [
+            ...Array.from(document.querySelectorAll('[data-contact-id]')).map(el => el.getAttribute('data-contact-id')),
+            ...Array.from(document.querySelectorAll('[data-modal-user-id]')).map(el => el.getAttribute('data-modal-user-id'))
+        ];
+        
+        const uniqueUserIds = [...new Set(allUserIds)];
+        
+        uniqueUserIds.forEach(userId => {
+            if (userId && userId !== currentUserId.toString()) {
+                const userStatusRef = ref(db, `users/${userId}/status`);
+                onValue(userStatusRef, (snapshot) => {
+                    const status = snapshot.val();
+                    updateStatusUI(userId, status);
+                });
+            }
         });
 
-        // Load contacts with Firebase integration
+        // Load contacts with Firebase integration (last messages)
         const contacts = Array.from(document.querySelectorAll('[data-contact-id]'));
         const contactData = [];
         let loadedCount = 0;
@@ -535,14 +658,31 @@ if (isset($_SESSION['user_id'])) {
                     if (loadingContacts) loadingContacts.style.display = 'none';
                 }
             }, {
-                onlyOnce: true
+                
             });
         });
 
-        // Auto-refresh page every 2 minutes to sync status
-        setInterval(() => {
-            window.location.reload();
-        }, 120000);
+        // Cleanup on page unload
+        function cleanup() {
+            clearInterval(statusInterval);
+            
+            set(userStatusRef, {
+                online: false,
+                status: 'offline',
+                lastSeen: serverTimestamp(),
+                name: currentUserName,
+                avatar: currentUserAvatar,
+                timestamp: Date.now()
+            }).catch(() => {});
+        }
+
+        window.addEventListener('beforeunload', cleanup);
+        window.addEventListener('unload', cleanup);
+
+        // If no contacts loaded, hide loading immediately
+        if (contacts.length === 0 && loadingContacts) {
+            loadingContacts.style.display = 'none';
+        }
     </script>
 </body>
 </html>

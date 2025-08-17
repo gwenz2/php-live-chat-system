@@ -14,11 +14,6 @@ if (!isset($_SESSION['user_id'])) {
 // Ensure user_id is an integer
 $user_id = (int) $_SESSION['user_id'];
 
-// Update last_seen and status
-$stmt = $conn->prepare("UPDATE users SET last_seen = NOW(), status = 'online' WHERE id = ?");
-$stmt->bind_param('i', $user_id);
-$stmt->execute();
-$stmt->close();
 
 
 // Fetch current user data

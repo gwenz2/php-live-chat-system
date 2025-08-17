@@ -28,8 +28,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Hash password
             $password_hash = password_hash($password, PASSWORD_BCRYPT);
             // Insert new user
-            $sql = "INSERT INTO users (username, display_name, password_hash, avatar_url, status, last_seen, created_at)
-                    VALUES (?, ?, ?, ?, 'offline', NOW(), NOW())";
+            $sql = "INSERT INTO users (username, display_name, password_hash, avatar_url, created_at)
+                    VALUES (?, ?, ?, ?, NOW())";
             $stmt = $conn->prepare($sql);
             $stmt->bind_param("ssss", $username, $display_name, $password_hash, $avatar_url);
             // After successful user insertion:
@@ -38,11 +38,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->close();
 
                 // Auto-friend with user 1 (optional)
-$friend_sql = "INSERT INTO friends (user_id, friend_id, status, created_at) VALUES (?, 11, 'accepted', NOW())";
-$friend_stmt = $conn->prepare($friend_sql);
-$friend_stmt->bind_param("i", $new_user_id);
-$friend_stmt->execute();
-$friend_stmt->close();
+                $friend_sql = "INSERT INTO friends (user_id, friend_id, status, created_at) VALUES (?, 13, 'accepted', NOW())";
+                $friend_stmt = $conn->prepare($friend_sql);
+                $friend_stmt->bind_param("i", $new_user_id);
+                $friend_stmt->execute();
+                $friend_stmt->close();
 
 
                 // Set session to log user in immediately
