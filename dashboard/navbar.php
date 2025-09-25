@@ -1,0 +1,67 @@
+<?php
+    $test = 1;
+?>
+<style>
+    .navbar {
+        border-radius: 1rem;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.08), 0 1.5px 4px rgba(0,0,0,0.04);
+        font-family: 'Segoe UI', 'Arial', sans-serif;
+        padding: 0.5rem 1rem;
+    }
+    .navbar-brand {
+        font-weight: 700;
+        letter-spacing: 1px;
+        font-size: 1.4rem;
+    }
+    .navbar-nav .nav-link {
+        margin-left: 0.7rem;
+        margin-right: 0.7rem;
+        border-radius: 0.5rem;
+        transition: background 0.2s, color 0.2s;
+    }
+    .navbar-nav .nav-link.active, .navbar-nav .nav-link:hover {
+        background: rgba(255,255,255,0.15);
+        color: #fff !important;
+    }
+    .navbar-toggler {
+        border-radius: 0.5rem;
+        border: none;
+    }
+    @media (max-width: 991.98px) {
+
+    .navbar-brand {
+        font-weight: 700;
+        letter-spacing: 1px;
+        font-size: 1.25rem;
+    }
+    .navbar-nav {
+        margin-top: 0.5rem;
+    }
+    .navbar-nav .nav-link {
+        margin: 0.2rem 0; /* Remove large left/right margins on mobile */
+        text-align: center; /* Center links when stacked */
+    }
+}
+
+</style>
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary border-radius mb-1">
+        <div class="container">
+            <a class="navbar-brand" href="#">OneTalk - Live Chat</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" aria-current="page" href="index.php">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="settings.php">Setting</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="logout.php">Logout</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
