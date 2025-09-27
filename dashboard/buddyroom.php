@@ -44,44 +44,7 @@ $other_avatar = '../assets/user_male_80px.png';
             background: linear-gradient(135deg, #e3f0ff 0%, #f9f9f9 100%);
         }
 
-        .status-indicator {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            display: inline-block;
-            border: 2px solid white;
-            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
-            position: absolute;
-            bottom: 2px;
-            right: 2px;
-        }
-
-        .status-online {
-            background-color: #28a745;
-            animation: pulse 2s infinite;
-        }
-
-        .status-offline {
-            background-color: #6c757d;
-        }
-
-        .status-away {
-            background-color: #ffc107;
-        }
-
-        @keyframes pulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
-            }
-
-            70% {
-                box-shadow: 0 0 0 6px rgba(40, 167, 69, 0);
-            }
-
-            100% {
-                box-shadow: 0 0 0 0 rgba(40, 167, 69, 0);
-            }
-        }
+        /* Status indicator circles removed - clean chat interface */
 
         /* Rest of your CSS remains the same */
         .typing-indicator {
@@ -287,12 +250,8 @@ $other_avatar = '../assets/user_male_80px.png';
                         <a href="index.php" class="btn btn-light btn-sm me-2 rounded-pill">
                             <i class="bi bi-arrow-left"></i>
                         </a>
-                        <div class="position-relative">
+                        <div>
                             <img id="otherUserAvatar" src="../assets/user_male_80px.png" class="rounded-circle border border-light" width="48" height="48" alt="User">
-                            <!-- Status indicator will be updated by Firebase -->
-                            <?php if ($other_user): ?>
-                                <span class="status-indicator status-offline" id="statusIndicator" title="Checking status..."></span>
-                            <?php endif; ?>
                         </div>
                         <div class="flex-grow-1">
                             <h6 id="otherUserName" class="mb-0">Loading...</h6>
@@ -439,7 +398,9 @@ $other_avatar = '../assets/user_male_80px.png';
                 if (snapshot.exists()) {
                     const userData = snapshot.val();
                     otherUserName = userData.displayName || userData.name || 'User';
-                    otherUserAvatar = optimizeAvatarUrl(userData.avatar);
+                    // Prioritize custom avatar URL over Google photo
+                    const avatarUrl = userData.customAvatarUrl || userData.photoURL || userData.avatar;
+                    otherUserAvatar = optimizeAvatarUrl(avatarUrl);
                     
                     console.log('Other user loaded:', {
                         name: otherUserName,
@@ -582,7 +543,12 @@ $other_avatar = '../assets/user_male_80px.png';
                     // Update current user data
                     currentUser.avatar = userData.avatar;
                 } else {
-                    console.log('Current user found in Firebase:', snapshot.val());
+                    const existingData = snapshot.val();
+                    console.log('Current user found in Firebase:', existingData);
+                    
+                    // Update current user avatar if custom avatar is available
+                    const prioritizedAvatar = existingData.customAvatarUrl || existingData.photoURL || existingData.avatar || currentUser.avatar;
+                    currentUser.avatar = prioritizedAvatar;
                 }
                 
             } catch (error) {
@@ -599,6 +565,8 @@ $other_avatar = '../assets/user_male_80px.png';
             }
             
             console.log('Setting up chat interface for:', otherUserId, 'currentUser:', currentUser.id);
+            console.log('Current user ID type:', typeof currentUser.id, 'Other user ID type:', typeof otherUserId);
+            console.log('Current user ID value:', currentUser.id, 'Other user ID value:', otherUserId);
             
             // Setup Firebase references with loaded data
             const refsInitialized = initializeFirebaseReferences();
@@ -634,32 +602,26 @@ $other_avatar = '../assets/user_male_80px.png';
             });
         }
 
-        // Update other user's status in UI
+        // Update other user's status in UI - only show "In this chat" text, no circles
         function updateOtherUserStatus(status) {
-            const statusIndicator = document.getElementById('statusIndicator');
             const userStatusEl = document.getElementById('userStatus');
             
             if (!status) {
-                if (statusIndicator) {
-                    statusIndicator.className = 'status-indicator status-offline';
-                    statusIndicator.title = 'Offline';
-                }
-                if (userStatusEl) userStatusEl.textContent = 'Offline';
+                if (userStatusEl) userStatusEl.textContent = '';
                 return;
             }
             
-            const isOnline = status.online === true;
-            const userStatus = status.status || 'offline';
+            const isActive = status.online === true;
+            let statusText = '';
             
-            if (statusIndicator) {
-                statusIndicator.className = `status-indicator status-${isOnline ? userStatus : 'offline'}`;
-                statusIndicator.title = userStatus.charAt(0).toUpperCase() + userStatus.slice(1);
+            // Check if user is in this specific chat
+            if (isActive && status.inChat === currentUser.id) {
+                statusText = 'In this chat';
             }
+            // Otherwise leave blank - no status shown
             
             if (userStatusEl) {
-                userStatusEl.textContent = isOnline ? 
-                    userStatus.charAt(0).toUpperCase() + userStatus.slice(1) : 
-                    'Offline';
+                userStatusEl.textContent = statusText;
             }
         }
 
@@ -671,14 +633,18 @@ $other_avatar = '../assets/user_male_80px.png';
             }
             
             try {
-                const chatId = `${Math.min(currentUser.id, otherUserId)}_${Math.max(currentUser.id, otherUserId)}`;
+                // Ensure both IDs are strings for proper comparison
+                const currentId = String(currentUser.id);
+                const otherId = String(otherUserId);
+                const chatId = `${currentId < otherId ? currentId : otherId}_${currentId < otherId ? otherId : currentId}`;
                 console.log('Initializing Firebase references with chatId:', chatId);
+                console.log('Chat ID components - Current ID:', currentId, 'Other ID:', otherId);
                 
                 chatRef = ref(db, `chats/${chatId}`);
-                typingRef = ref(db, `typing/${chatId}/${currentUser.id}`);
-                otherTypingRef = ref(db, `typing/${chatId}/${otherUserId}`);
-                userStatusRef = ref(db, `users/${currentUser.id}/status`);
-                otherUserStatusRef = ref(db, `users/${otherUserId}/status`);
+                typingRef = ref(db, `typing/${chatId}/${currentId}`);
+                otherTypingRef = ref(db, `typing/${chatId}/${otherId}`);
+                userStatusRef = ref(db, `users/${currentId}/status`);
+                otherUserStatusRef = ref(db, `users/${otherId}/status`);
                 
                 console.log('Firebase references initialized successfully');
                 return true;
@@ -701,7 +667,6 @@ $other_avatar = '../assets/user_male_80px.png';
         const typingIndicator = document.getElementById('typingIndicator');
         const scrollToBottomBtn = document.getElementById('scrollToBottom');
         const userStatusEl = document.getElementById('userStatus');
-        const statusIndicator = document.getElementById('statusIndicator');
 
         let firstMessageLoaded = false;
         let typingTimeout;
@@ -739,22 +704,21 @@ $other_avatar = '../assets/user_male_80px.png';
             return 'online';
         }
 
-        // Update user status in Firebase - with proper cleanup
+        // Update user status in Firebase - simplified with inChat tracking
         function updateUserStatus() {
             if (!currentUser.id || !userStatusRef) {
                 console.log('Cannot update status - missing user or userStatusRef');
                 return;
             }
 
-            const status = getUserStatus();
             const statusData = {
                 online: true,
-                status: status,
                 lastSeen: serverTimestamp(),
-                inChat: otherUserId,
+                inChat: otherUserId, // Set which chat this user is currently in
                 name: currentUser.name,
                 avatar: currentUser.avatar,
-                timestamp: Date.now() // Add timestamp for debugging
+                timestamp: Date.now(),
+                heartbeat: Date.now()
             };
 
             set(userStatusRef, statusData).catch(console.error);
@@ -820,7 +784,7 @@ $other_avatar = '../assets/user_male_80px.png';
                             const msg = childSnapshot.val();
                             const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
 
-                            if (messageDiv && msg.sender_id == currentUser.id) {
+                            if (messageDiv && String(msg.sender_id) === String(currentUser.id)) {
                                 const readStatusSpan = messageDiv.querySelector('.read-status');
                                 if (readStatusSpan) {
                                     if (msg.is_read && msg.read_at) {
@@ -853,7 +817,7 @@ $other_avatar = '../assets/user_male_80px.png';
         // Function to add message to UI
         function addMessageToUI(messageId, msg) {
             const div = document.createElement("div");
-            const isSent = msg.sender_id == currentUser.id;
+            const isSent = String(msg.sender_id) === String(currentUser.id);
 
             div.className = isSent ? "d-flex flex-row-reverse mb-3 align-items-end" : "d-flex mb-3 align-items-end";
             div.setAttribute('data-message-id', messageId);
@@ -1016,7 +980,7 @@ $other_avatar = '../assets/user_male_80px.png';
                     const updates = {};
                     snapshot.forEach(childSnap => {
                         const msg = childSnap.val();
-                        if (msg.sender_id == otherUserId && !msg.is_read) {
+                        if (String(msg.sender_id) === String(otherUserId) && !msg.is_read) {
                             updates[childSnap.key + "/is_read"] = true;
                             updates[childSnap.key + "/read_at"] = Date.now();
                         }
@@ -1053,7 +1017,7 @@ $other_avatar = '../assets/user_male_80px.png';
                 }
 
                 push(chatRef, {
-                    sender_id: currentUser.id,
+                    sender_id: String(currentUser.id),
                     sender_name: currentUser.name,
                     sender_avatar: currentUser.avatar,
                     message: msg,
@@ -1090,22 +1054,22 @@ $other_avatar = '../assets/user_male_80px.png';
             if (activityInterval) clearInterval(activityInterval);
             if (typingTimeout) clearTimeout(typingTimeout);
 
-            // Set offline status only if userStatusRef exists
+            // Remove from chat when leaving - don't set offline, just clear inChat
             if (userStatusRef && currentUser) {
                 set(userStatusRef, {
-                    online: false,
-                    status: 'offline',
+                    online: true, // Keep online, just not in this chat
                     lastSeen: serverTimestamp(),
-                    inChat: null,
+                    inChat: null, // Clear the chat room they're in
                     name: currentUser.name,
                     avatar: currentUser.avatar,
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
+                    heartbeat: Date.now()
                 }).catch(() => {}); // Ignore errors during cleanup 
             }
         }
 
-        //window.addEventListener('beforeunload', cleanup);
-        //window.addEventListener('unload', cleanup);
+        window.addEventListener('beforeunload', cleanup);
+        window.addEventListener('unload', cleanup);
 
         // Focus input on load
         if (otherUserId && messageInput) {

@@ -1,11 +1,6 @@
 <?php
 // Firebase Authentication - no more MySQL dependency for auth
 require_once '../firebase-auth.php';
-
-// The authentication check is now handled by JavaScript
-// We'll create temporary session variables for backward compatibility
-$current_avatar = '../assets/user_male_80px.png';
-$current_user_display_name = 'User'; // Default, will be updated by JavaScript
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -23,40 +18,9 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
         background: linear-gradient(135deg, #e3f0ff 0%, #f9f9f9 100%);
     }
     
-    /* Enhanced status indicators */
-    .status-indicator {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        display: inline-block;
-        margin-right: 5px;
-        border: 2px solid white;
-        box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
-    }
+    /* Status indicators removed - clean simple chat interface */
     
-    .status-online {
-        background-color: #28a745;
-        animation: pulse 2s infinite;
-    }
-    
-    .status-offline {
-        background-color: #6c757d;
-    }
-    
-    .status-away {
-        background-color: #ffc107;
-    }
-    
-    @keyframes pulse {
-        0% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7); }
-        70% { box-shadow: 0 0 0 6px rgba(40, 167, 69, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); }
-    }
-    
-    .last-seen-time {
-        font-size: 11px;
-        color: #6c757d;
-    }
+    /* Removed last-seen-time - no status tracking */
 
     .btn-gradient {
         background: linear-gradient(90deg, #4f8cff 0%, #6f6fff 100%);
@@ -137,8 +101,8 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
         <div class="row mb-3">
             <div class="col d-flex justify-content-end align-items-center">
                 <div class="bg-white shadow-sm rounded-pill px-3 py-2 d-flex align-items-center gap-2" style="min-width: 50px;" id="userProfileDisplay">
-                    <img id="currentUserAvatar" src="<?php echo $current_avatar; ?>" alt="User" width="32" height="32" class="rounded-circle border border-primary">
-                    <span id="currentUserName" class="fw-semibold text-primary"><?php echo htmlspecialchars($current_user_display_name); ?></span>
+                    <img id="currentUserAvatar" src="../assets/user_male_80px.png" alt="User" width="32" height="32" class="rounded-circle border border-primary">
+                    <span id="currentUserName" class="fw-semibold text-primary">Loading...</span>
                     <span class="status-indicator status-online" title="Online"></span>
                 </div>
             </div>
@@ -163,7 +127,7 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
                         </div>
                     </div>
                 </div>
-                <div class="list-group list-group-flush position-relative" id="contactsList" style="min-height: 100px;">
+                <div class="list-group list-group-flush position-relative" id="contactsList" style="min-height: 470px;">
                     <div id="loadingContacts" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10;text-align:center;">
                         <span class="spinner-border text-primary" role="status"></span>
                         <div class="mt-2 fw-semibold">Loading...</div>
@@ -251,6 +215,46 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
+        // Firebase Data Cache System
+        const CACHE_EXPIRY_TIME = 5 * 60 * 1000; // 5 minutes
+        
+        function setCachedData(key, data) {
+            const cacheData = {
+                data: data,
+                timestamp: Date.now(),
+                expiresAt: Date.now() + CACHE_EXPIRY_TIME
+            };
+            localStorage.setItem(`firebase_cache_${key}`, JSON.stringify(cacheData));
+        }
+        
+        function getCachedData(key) {
+            const cached = localStorage.getItem(`firebase_cache_${key}`);
+            if (!cached) return null;
+            
+            const cacheData = JSON.parse(cached);
+            if (Date.now() > cacheData.expiresAt) {
+                localStorage.removeItem(`firebase_cache_${key}`);
+                return null;
+            }
+            
+            return cacheData.data;
+        }
+        
+        function clearUserCache(userId) {
+            localStorage.removeItem(`firebase_cache_user_${userId}`);
+            localStorage.removeItem(`firebase_cache_friends_${userId}`);
+            localStorage.removeItem(`firebase_cache_requests_${userId}`);
+        }
+        
+        function refreshUserData() {
+            if (currentUserId) {
+                clearUserCache(currentUserId);
+                loadUsers();
+                loadFriendRequests();
+                console.log('User data cache refreshed');
+            }
+        }
+
         // Notification system
         function showNotification(message, type = 'info', duration = 4000) {
             const container = document.getElementById('notificationContainer');
@@ -304,6 +308,7 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
         let currentUserName = null;
         let currentUserAvatar = null;
         let currentUserData = null;
+        let presenceCheckInterval = null;
 
         // Get user data from localStorage
         const firebaseUserData = localStorage.getItem('firebaseUser');
@@ -312,6 +317,10 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
             currentUserId = currentUserData.uid;
             currentUserName = currentUserData.displayName || currentUserData.username;
             currentUserAvatar = currentUserData.avatar || '../assets/user_male_80px.png';
+        } else {
+            // No user data found - redirect immediately to login
+            console.log('No user data found in localStorage, redirecting to login');
+            window.location.href = '../index.php?msg=' + encodeURIComponent('Please log in to access the dashboard.');
         }
 
         // Update the UI with current user info
@@ -334,15 +343,16 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
         const auth = getAuth(app);
 
         // Ensure user is authenticated
-        onAuthStateChanged(auth, (user) => {
+        onAuthStateChanged(auth, async (user) => {
             console.log('Auth state changed:', user ? 'User logged in' : 'No user', user);
             
             if (!user) {
-                // Only redirect if we don't have valid localStorage data AND we're not already redirecting
+                // Check localStorage as fallback
                 const storedUser = localStorage.getItem('firebaseUser');
                 console.log('No Firebase user, checking localStorage:', storedUser ? 'Found' : 'Not found');
                 
-                if (!storedUser && !window.location.href.includes('index.php')) {
+                if (!storedUser) {
+                    // No authentication found - redirect to login
                     localStorage.removeItem('firebaseUser');
                     console.log('Redirecting to login page');
                     window.location.href = '../index.php?msg=' + encodeURIComponent('Please log in to access the dashboard.');
@@ -351,13 +361,40 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
             } else {
                 // We have a Firebase user, ensure localStorage is updated
                 if (!currentUserData) {
+                    // Check cache first
+                    let fbUserData = getCachedData(`user_${user.uid}`);
+                    let customAvatar = user.photoURL;
+                    
+                    if (fbUserData) {
+                        console.log('Using cached user data');
+                        customAvatar = fbUserData.customAvatarUrl || fbUserData.photoURL || user.photoURL;
+                    } else {
+                        // Get user data from Firebase Database
+                        try {
+                            console.log('Loading fresh user data from Firebase');
+                            const userRef = ref(db, `users/${user.uid}`);
+                            const userSnapshot = await get(userRef);
+                            
+                            if (userSnapshot.exists()) {
+                                fbUserData = userSnapshot.val();
+                                // Cache the user data
+                                setCachedData(`user_${user.uid}`, fbUserData);
+                                // Prioritize custom avatar URL
+                                customAvatar = fbUserData.customAvatarUrl || fbUserData.photoURL || user.photoURL;
+                            }
+                        } catch (error) {
+                            console.error('Error loading user data:', error);
+                        }
+                    }
+                    
                     const userData = {
                         uid: user.uid,
                         displayName: user.displayName || 'User',
                         username: user.displayName || 'User',
                         email: user.email || '',
-                        avatar: user.photoURL || '../assets/user_male_80px.png'
+                        avatar: customAvatar || '../assets/user_male_80px.png'
                     };
+                
                     localStorage.setItem('firebaseUser', JSON.stringify(userData));
                     currentUserData = userData;
                     currentUserId = userData.uid;
@@ -373,9 +410,15 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
                     };
                     document.getElementById('currentUserName').textContent = currentUserName;
                     
-                    // Load users now that we have authentication
+                    // Load users now that we have authentication (with caching)
                     loadUsers();
                     loadFriendRequests();
+                    // Set up real-time avatar monitoring
+                    setupAvatarMonitoring();
+                    // Initialize enhanced presence system
+                    initializePresence();
+                    setupDisconnectHandler();
+                    startSimplePresenceMonitoring();
                 }
             }
         });
@@ -386,7 +429,46 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
             setTimeout(() => {
                 loadUsers();
                 loadFriendRequests();
+                // Set up real-time avatar monitoring
+                setupAvatarMonitoring();
             }, 100);
+        }
+
+        // Function to monitor real-time avatar changes
+        function setupAvatarMonitoring() {
+            if (!currentUserId) return;
+            
+            const userRef = ref(db, `users/${currentUserId}`);
+            onValue(userRef, (snapshot) => {
+                if (snapshot.exists()) {
+                    const userData = snapshot.val();
+                    // Prioritize custom avatar URL over Google photo
+                    const newAvatar = userData.customAvatarUrl || userData.photoURL || userData.avatar || '../assets/user_male_80px.png';
+                    
+                    // Update current user avatar if it has changed
+                    if (newAvatar !== currentUserAvatar) {
+                        currentUserAvatar = newAvatar;
+                        
+                        // Update the profile display avatar immediately
+                        const avatarElement = document.getElementById('currentUserAvatar');
+                        if (avatarElement) {
+                            avatarElement.src = getOptimizedAvatar(newAvatar);
+                            avatarElement.onerror = function() {
+                                this.onerror = null;
+                                this.src = '../assets/user_male_80px.png';
+                            };
+                        }
+                        
+                        // Update localStorage with new avatar
+                        if (currentUserData) {
+                            currentUserData.avatar = newAvatar;
+                            localStorage.setItem('firebaseUser', JSON.stringify(currentUserData));
+                        }
+                        
+                        console.log('Avatar updated in real-time:', newAvatar);
+                    }
+                }
+            });
         }
 
         // Add modal event listener to load users when modal opens
@@ -406,7 +488,7 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
         let lastCacheTime = 0;
         const CACHE_DURATION = 30000; // 30 seconds
 
-        // Load friends and available users from Firebase (optimized)
+        // Load friends and available users from Firebase (with enhanced caching)
         async function loadUsers() {
             if (!currentUserId) return;
             
@@ -415,13 +497,16 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
             if (loadingElement) loadingElement.style.display = 'block';
             
             try {
-                // Use cache if recent
-                const now = Date.now();
-                if (usersCache && (now - lastCacheTime) < CACHE_DURATION) {
-                    console.log('Using cached user data');
-                    renderUsers(usersCache);
+                // Check enhanced cache first
+                const cachedUsers = getCachedData(`friends_${currentUserId}`);
+                if (cachedUsers) {
+                    console.log('Using cached friends data from localStorage');
+                    renderUsers(cachedUsers);
+                    if (loadingElement) loadingElement.style.display = 'none';
                     return;
                 }
+                
+                console.log('Loading fresh friends data from Firebase');
 
                 // Fetch data efficiently - only what we need
                 const [usersSnapshot, friendsSnapshot] = await Promise.all([
@@ -436,10 +521,12 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
                 
                 const allUsers = usersSnapshot.val();
                 const userFriendsData = friendsSnapshot.exists() ? friendsSnapshot.val() : {};
+                const now = Date.now();
                 
-                // Cache the data
+                // Cache the data both in memory and localStorage
                 usersCache = { allUsers, friendsData: userFriendsData };
                 lastCacheTime = now;
+                setCachedData(`friends_${currentUserId}`, usersCache);
                 
                 renderUsers(usersCache);
                 
@@ -495,7 +582,8 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
                 if (userId === currentUserId) return; // Skip self
                 
                 const friendStatus = friendsData[userId]?.status || 'none';
-                const avatar = userData.avatar || '../assets/user_male_80px.png';
+                // Prioritize custom avatar URL over Google photo
+                const avatar = userData.customAvatarUrl || userData.photoURL || userData.avatar || '../assets/user_male_80px.png';
                 const displayName = userData.displayName || userData.name || userData.username || 'Unknown User';
                 const username = userData.username || userData.email?.split('@')[0] || 'unknown';
                 
@@ -519,9 +607,6 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
             
             // Show/hide messages and hide loading
             updateUIState(hasFriends, hasAvailableUsers);
-            
-            // Start monitoring user statuses after rendering
-            startStatusMonitoring();
         }
 
         // Helper function to determine request status
@@ -543,9 +628,18 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
             document.getElementById('loadingContacts').style.display = 'none';
         }
 
-        // Load friend requests
+        // Load friend requests (with caching)
         async function loadFriendRequests() {
             try {
+                // Check cache first
+                const cachedRequests = getCachedData(`requests_${currentUserId}`);
+                if (cachedRequests) {
+                    console.log('Using cached friend requests');
+                    renderFriendRequests(cachedRequests);
+                    return;
+                }
+                
+                console.log('Loading fresh friend requests from Firebase');
                 const requestsRef = ref(db, `friendRequests/${currentUserId}`);
                 const snapshot = await get(requestsRef);
                 
@@ -560,22 +654,39 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
                 }
                 
                 const requests = snapshot.val();
-                let hasPendingRequests = false;
-                
-                Object.entries(requests).forEach(([requesterId, requestData]) => {
-                    if (requestData.status === 'pending') {
-                        hasPendingRequests = true;
-                        const requestElement = createFriendRequestElement(requesterId, requestData);
-                        pendingContainer.appendChild(requestElement);
-                    }
-                });
-                
-                noPendingMessage.style.display = hasPendingRequests ? 'none' : 'block';
+                // Cache the requests data
+                setCachedData(`requests_${currentUserId}`, requests);
+                renderFriendRequests(requests);
                 
             } catch (error) {
                 console.error('Error loading friend requests:', error);
                 document.getElementById('noPendingRequests').style.display = 'block';
             }
+        }
+
+        // Render friend requests (separate function for caching)
+        function renderFriendRequests(requests) {
+            const pendingContainer = document.getElementById('pendingRequests');
+            const noPendingMessage = document.getElementById('noPendingRequests');
+            
+            pendingContainer.innerHTML = '';
+            
+            if (!requests) {
+                noPendingMessage.style.display = 'block';
+                return;
+            }
+            
+            let hasPendingRequests = false;
+            
+            Object.entries(requests).forEach(([requesterId, requestData]) => {
+                if (requestData.status === 'pending') {
+                    hasPendingRequests = true;
+                    const requestElement = createFriendRequestElement(requesterId, requestData);
+                    pendingContainer.appendChild(requestElement);
+                }
+            });
+            
+            noPendingMessage.style.display = hasPendingRequests ? 'none' : 'block';
         }
 
         // Create friend request element
@@ -614,26 +725,80 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
             document.getElementById('loadingContacts').style.display = 'none';
         }
 
-        // Start monitoring user statuses
-        function startStatusMonitoring() {
-            // Get all user IDs that need monitoring
-            const contactElements = document.querySelectorAll('[data-contact-id]');
-            const modalElements = document.querySelectorAll('[data-modal-user-id]');
+        // No status monitoring needed - removed status indicators
+
+        // Load last message for a specific friend
+        function loadLastMessageForFriend(friendElement, userId, displayName) {
+            if (!currentUserId || !userId) return;
             
-            const userIds = new Set();
-            contactElements.forEach(el => userIds.add(el.getAttribute('data-contact-id')));
-            modalElements.forEach(el => userIds.add(el.getAttribute('data-modal-user-id')));
-            
-            // Monitor each user's status
-            userIds.forEach(userId => {
-                if (userId && userId !== currentUserId) {
-                    const userStatusRef = ref(db, `users/${userId}/status`);
-                    onValue(userStatusRef, (snapshot) => {
-                        const status = snapshot.val();
-                        updateStatusUI(userId, status);
+            const lastMsgDiv = friendElement.querySelector('.last-message');
+            // Ensure both IDs are strings for proper comparison
+            const currentId = String(currentUserId);
+            const otherId = String(userId);
+            const chatId = `${currentId < otherId ? currentId : otherId}_${currentId < otherId ? otherId : currentId}`;
+            const chatRef = ref(db, `chats/${chatId}`);
+            const lastMsgQuery = query(chatRef, limitToLast(1));
+
+            onValue(lastMsgQuery, snapshot => {
+                if (snapshot.exists()) {
+                    snapshot.forEach(childSnap => {
+                        const msg = childSnap.val();
+                        
+                        // Format message with sender name
+                        let messageText = '';
+                        if (String(msg.sender_id) === String(currentUserId)) {
+                            messageText = `You: ${msg.message}`; // Just show the message without "You:"
+                        } else {
+                            messageText = `${msg.message}`;
+                        }
+                        
+                        lastMsgDiv.textContent = messageText;
+
+                        // Style based on read status - bold if unread message from other user
+                        if (String(msg.sender_id) !== String(currentUserId) && !msg.is_read) {
+                            lastMsgDiv.classList.remove('text-muted');
+                            lastMsgDiv.classList.add('fw-bold', 'text-dark');
+                            
+                            // Also make the whole friend item stand out for unread
+                            friendElement.style.background = '#f8f9ff';
+                            friendElement.style.borderLeft = '4px solid #4f8cff';
+                        } else {
+                            lastMsgDiv.classList.remove('fw-bold', 'text-dark');
+                            lastMsgDiv.classList.add('text-muted');
+                            
+                            // Remove unread styling
+                            friendElement.style.background = '#fff';
+                            friendElement.style.borderLeft = 'none';
+                        }
+                        
+                        // Store timestamp for sorting
+                        friendElement.setAttribute('data-last-message-time', msg.timestamp || 0);
                     });
+                } else {
+                    lastMsgDiv.textContent = 'No messages yet';
+                    lastMsgDiv.classList.remove('fw-bold', 'text-dark');
+                    lastMsgDiv.classList.add('text-muted');
+                    friendElement.setAttribute('data-last-message-time', 0);
                 }
+                
+                // Re-sort friends list by last message time
+                sortFriendsByLastMessage();
             });
+        }
+        
+        // Sort friends by last message timestamp
+        function sortFriendsByLastMessage() {
+            const friendsList = document.getElementById('friendsList');
+            const friends = Array.from(friendsList.children);
+            
+            friends.sort((a, b) => {
+                const timeA = parseInt(a.getAttribute('data-last-message-time') || 0);
+                const timeB = parseInt(b.getAttribute('data-last-message-time') || 0);
+                return timeB - timeA; // Most recent first
+            });
+            
+            // Re-append in sorted order
+            friends.forEach(friend => friendsList.appendChild(friend));
         }
 
         // Helper function to optimize and handle avatar URLs
@@ -659,29 +824,31 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
             div.style.borderRadius = '1rem';
             div.style.background = '#fff';
             div.style.boxShadow = '0 1px 4px #0001';
+            div.style.minHeight = '80px';
+            div.style.padding = '16px';
             div.onclick = () => openChat(userId, displayName, avatar);
             
             const optimizedAvatar = getOptimizedAvatar(avatar);
             
             div.innerHTML = `
-                <div class="position-relative">
+                <div>
                     <img src="${optimizedAvatar}" class="rounded-circle border border-primary" width="50" height="50" alt="${displayName}"
                          onerror="this.onerror=null; this.src='../assets/user_male_80px.png';">
-                    <span class="status-indicator status-offline position-absolute firebase-status" 
-                          style="bottom: 2px; right: 2px;" title="Loading..."></span>
                 </div>
                 <div class="flex-grow-1">
                     <div class="d-flex align-items-center justify-content-between mb-1">
                         <h6 class="mb-0">${displayName}</h6>
-                        <small class="last-seen-time firebase-last-seen">Loading...</small>
                     </div>
                     <div class="d-flex align-items-center justify-content-between">
                         <small class="text-muted">@${username}</small>
-                        <span class="badge bg-secondary badge-sm firebase-badge">Loading</span>
                     </div>
-                    <div class="last-message text-dark-emphasis small mt-1"></div>
+                    <div class="last-message text-muted small mt-1">Loading messages...</div>
                 </div>
             `;
+            
+            // Load last message for this friend after element is created
+            loadLastMessageForFriend(div, userId, displayName);
+            
             return div;
         }
 
@@ -723,67 +890,20 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
             }
             
             div.innerHTML = `
-                <div class="position-relative">
+                <div>
                     <img src="${optimizedAvatar}" class="rounded-circle border border-primary" width="40" height="40" alt="${displayName}"
                          onerror="this.onerror=null; this.src='../assets/user_male_80px.png';">
-                    <span class="status-indicator status-offline position-absolute firebase-status-modal" 
-                          style="bottom: 0; right: 0;" title="Loading..."></span>
                 </div>
                 <div class="flex-grow-1">
                     <h6 class="mb-0">${displayName}</h6>
-                    <small class="text-muted">@${username} • <span class="firebase-status-text">Loading...</span></small>
+                    <small class="text-muted">@${username}</small>
                 </div>
                 ${buttonHTML}
             `;
             return div;
         }
 
-        // Legacy functions for compatibility
-        function createFriendItem(userId, userData, avatar, displayName, username) {
-            return `
-                <div class="list-group-item list-group-item-action d-flex align-items-center gap-3 mb-2" 
-                     data-contact-id="${userId}" 
-                     onclick="openChat('${userId}', '${displayName}', '${avatar}')"
-                     style="cursor: pointer; border-radius: 1rem; background: #fff; box-shadow: 0 1px 4px #0001;">
-                    <div class="position-relative">
-                        <img src="${avatar}" class="rounded-circle border border-primary" width="50" height="50" alt="${displayName}">
-                        <span class="status-indicator status-offline position-absolute firebase-status" 
-                              style="bottom: 2px; right: 2px;" title="Loading..."></span>
-                    </div>
-                    <div class="flex-grow-1">
-                        <div class="d-flex align-items-center justify-content-between mb-1">
-                            <h6 class="mb-0">${displayName}</h6>
-                            <small class="last-seen-time firebase-last-seen">Loading...</small>
-                        </div>
-                        <div class="d-flex align-items-center justify-content-between">
-                            <small class="text-muted">@${username}</small>
-                            <span class="badge bg-secondary badge-sm firebase-badge">Loading</span>
-                        </div>
-                        <div class="last-message text-dark-emphasis small mt-1"></div>
-                    </div>
-                </div>
-            `;
-        }
-
-        // Create available user item
-        function createAvailableUserItem(userId, userData, avatar, displayName, username) {
-            return `
-                <div class="list-group-item d-flex align-items-center gap-3 mb-2" data-modal-user-id="${userId}">
-                    <div class="position-relative">
-                        <img src="${avatar}" class="rounded-circle border border-primary" width="40" height="40" alt="${displayName}">
-                        <span class="status-indicator status-offline position-absolute firebase-status-modal" 
-                              style="bottom: 0; right: 0;" title="Loading..."></span>
-                    </div>
-                    <div class="flex-grow-1">
-                        <h6 class="mb-0">${displayName}</h6>
-                        <small class="text-muted">@${username} • <span class="firebase-status-text">Loading...</span></small>
-                    </div>
-                    <button class="btn btn-primary btn-sm rounded-pill" onclick="addFriend('${userId}', '${displayName}')">
-                        ADD BUDDY
-                    </button>
-                </div>
-            `;
-        }
+        // Legacy functions removed - no status indicators needed
 
         // Open chat function
         window.openChat = function(userId, displayName, avatar) {
@@ -930,135 +1050,120 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
             return 'online';
         }
 
-        // Update user status in Firebase
+        // Simplified user status update
         function updateUserStatus() {
-            const status = getUserStatus();
+            if (!currentUserId) return;
+            
             const userStatusRef = ref(db, `users/${currentUserId}/status`);
             
             set(userStatusRef, {
-                online: status !== 'offline',
-                status: status,
+                online: true, // Simply online when active
                 lastSeen: serverTimestamp(),
                 name: currentUserName,
                 avatar: currentUserAvatar,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                heartbeat: Date.now() // Basic heartbeat for activity detection
             }).catch(console.error);
         }
 
-        // Initialize presence system
-        updateUserStatus();
-        const statusInterval = setInterval(updateUserStatus, 45000);
+        // Enhanced presence system with grace periods
+        let presenceTimeout = null;
+        let isInitialized = false;
 
-        // Handle page visibility
+        function initializePresence() {
+            if (isInitialized || !currentUserId) return;
+            isInitialized = true;
+            
+            // Set initial online status
+            updateUserStatus(true);
+            
+            // Regular heartbeat every 30 seconds (more frequent)
+            const statusInterval = setInterval(() => {
+                updateUserStatus();
+            }, 30000);
+            
+            // Clear any existing timeout
+            if (presenceTimeout) {
+                clearTimeout(presenceTimeout);
+                presenceTimeout = null;
+            }
+        }
+
+        // Initialize presence system after user is confirmed
+        if (currentUserId) {
+            initializePresence();
+            // Start simple presence monitoring
+            startSimplePresenceMonitoring();
+        }
+
+        // Handle page visibility with better timing
         document.addEventListener('visibilitychange', () => {
             isPageVisible = !document.hidden;
             
             if (isPageVisible) {
+                // Page became visible - immediately set as online
                 trackUserActivity();
-                updateUserStatus();
+                updateUserStatus(true);
+                
+                // Clear any pending away status
+                if (presenceTimeout) {
+                    clearTimeout(presenceTimeout);
+                    presenceTimeout = null;
+                }
             } else {
-                setTimeout(() => {
-                    if (!isPageVisible) {
+                // Page became hidden - set away after longer delay
+                presenceTimeout = setTimeout(() => {
+                    if (!isPageVisible && currentUserId) {
                         const userStatusRef = ref(db, `users/${currentUserId}/status`);
                         set(userStatusRef, {
-                            online: true,
+                            online: true, // Still online, just away
                             status: 'away',
                             lastSeen: serverTimestamp(),
                             name: currentUserName,
                             avatar: currentUserAvatar,
-                            timestamp: Date.now()
+                            timestamp: Date.now(),
+                            heartbeat: Date.now()
                         }).catch(console.error);
                     }
-                }, 30000); // 30 seconds delay
+                }, 60000); // Increased to 60 seconds delay
             }
         });
 
-        // Set up disconnect handler
-        const disconnectRef = onDisconnect(ref(db, `users/${currentUserId}/status`));
-        disconnectRef.set({
-            online: false,
-            status: 'offline',
-            lastSeen: serverTimestamp(),
-            name: currentUserName,
-            avatar: currentUserAvatar,
-            timestamp: Date.now()
-        }).catch(console.error);
-
-        // Function to update status UI elements
-        function updateStatusUI(userId, status) {
-            const isOnline = status && status.online === true;
-            const userStatus = status ? (status.status || 'offline') : 'offline';
+        // Enhanced disconnect handler with grace period
+        function setupDisconnectHandler() {
+            if (!currentUserId) return;
             
-            // Update main contacts list
-            const contactElements = document.querySelectorAll(`[data-contact-id="${userId}"]`);
-            contactElements.forEach(element => {
-                const statusIndicator = element.querySelector('.firebase-status');
-                const lastSeenEl = element.querySelector('.firebase-last-seen');
-                const badgeEl = element.querySelector('.firebase-badge');
-                
-                if (statusIndicator) {
-                    statusIndicator.className = `status-indicator status-${isOnline ? userStatus : 'offline'} position-absolute firebase-status`;
-                    statusIndicator.title = userStatus.charAt(0).toUpperCase() + userStatus.slice(1);
-                }
-                
-                if (lastSeenEl && badgeEl) {
-                    let statusText = 'Offline';
-                    let badgeClass = 'bg-secondary';
-                    
-                    if (isOnline) {
-                        switch (userStatus) {
-                            case 'online':
-                                statusText = 'Online';
-                                badgeClass = 'bg-success';
-                                break;
-                            case 'away':
-                                statusText = 'Away';
-                                badgeClass = 'bg-warning';
-                                break;
-                            default:
-                                statusText = 'Online';
-                                badgeClass = 'bg-success';
-                        }
-                    } else if (status && status.lastSeen) {
-                        const now = Date.now();
-                        const lastSeenTime = typeof status.lastSeen === 'number' ? status.lastSeen : now;
-                        const minutesOffline = Math.floor((now - lastSeenTime) / 60000);
-                        
-                        if (minutesOffline < 1) {
-                            statusText = 'Just now';
-                        } else if (minutesOffline < 60) {
-                            statusText = `${minutesOffline}m ago`;
-                        } else if (minutesOffline < 1440) {
-                            const hours = Math.floor(minutesOffline / 60);
-                            statusText = `${hours}h ago`;
-                        } else {
-                            const days = Math.floor(minutesOffline / 1440);
-                            statusText = `${days}d ago`;
-                        }
-                    }
-                    
-                    lastSeenEl.textContent = statusText;
-                    badgeEl.className = `badge ${badgeClass} badge-sm firebase-badge`;
-                    badgeEl.textContent = userStatus.charAt(0).toUpperCase() + userStatus.slice(1);
-                }
-            });
-            
-            // Update modal elements
-            const modalElements = document.querySelectorAll(`[data-modal-user-id="${userId}"]`);
-            modalElements.forEach(element => {
-                const statusIndicator = element.querySelector('.firebase-status-modal');
-                const statusText = element.querySelector('.firebase-status-text');
-                
-                if (statusIndicator) {
-                    statusIndicator.className = `status-indicator status-${isOnline ? userStatus : 'offline'} position-absolute firebase-status-modal`;
-                    statusIndicator.title = userStatus.charAt(0).toUpperCase() + userStatus.slice(1);
-                }
-                
-                if (statusText) {
-                    statusText.textContent = isOnline ? userStatus.charAt(0).toUpperCase() + userStatus.slice(1) : 'Offline';
-                }
-            });
+            const disconnectRef = onDisconnect(ref(db, `users/${currentUserId}/status`));
+            // Set offline status only after network disconnect (not immediate page reload)
+            disconnectRef.set({
+                online: false,
+                status: 'offline',
+                lastSeen: serverTimestamp(),
+                name: currentUserName,
+                avatar: currentUserAvatar,
+                timestamp: Date.now(),
+                heartbeat: Date.now()
+            }).catch(console.error);
         }
+        
+        if (currentUserId) {
+            setupDisconnectHandler();
+        }
+
+        // Simplified presence tracking - just basic activity monitoring
+        const monitoredUsers = new Set();
+        
+        function startSimplePresenceMonitoring() {
+            // Simple presence check every 30 seconds
+            presenceCheckInterval = setInterval(() => {
+                // Just update our own heartbeat - let others handle their own presence
+                if (currentUserId) {
+                    updateUserStatus();
+                }
+            }, 30000);
+        }
+        
+        // No status UI updates needed - removed all status indicators
 
         // Status monitoring is now handled by startStatusMonitoring() function
 
@@ -1116,18 +1221,21 @@ $current_user_display_name = 'User'; // Default, will be updated by JavaScript
             });
         });
 
-        // Cleanup on page unload
+        // Enhanced cleanup on page unload
         function cleanup() {
-            clearInterval(statusInterval);
+            // Clear any pending timeouts
+            if (presenceTimeout) {
+                clearTimeout(presenceTimeout);
+            }
             
-            set(userStatusRef, {
-                online: false,
-                status: 'offline',
-                lastSeen: serverTimestamp(),
-                name: currentUserName,
-                avatar: currentUserAvatar,
-                timestamp: Date.now()
-            }).catch(() => {});
+            // Clear presence monitoring interval
+            if (presenceCheckInterval) {
+                clearInterval(presenceCheckInterval);
+            }
+            
+            // Don't immediately set offline - let Firebase disconnect handler manage it
+            // This prevents showing offline during quick page reloads
+            console.log('Page unloading - disconnect handler will manage status');
         }
 
         window.addEventListener('beforeunload', cleanup);

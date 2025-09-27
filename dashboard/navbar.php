@@ -1,5 +1,5 @@
 <?php
-    $test = 1;
+// Firebase-compatible navigation - no session dependencies
 ?>
 <style>
     .navbar {

@@ -1,149 +1,6 @@
 <?php
-require_once '../db.php';
-
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-// Redirect to login if not authenticated
-if (!isset($_SESSION['user_id'])) {
-    header('Location: ../index.php?msg=' . urlencode('Please log in to access the dashboard.'));
-    exit;
-}
-
-// Ensure user_id is an integer
-$user_id = (int) $_SESSION['user_id'];
-
-
-
-// Fetch current user data
-$user = null;
-$stmt = $conn->prepare('SELECT display_name, avatar_url, username FROM users WHERE id = ?');
-$stmt->bind_param('i', $user_id);
-$stmt->execute();
-$result = $stmt->get_result();
-$user = $result->fetch_assoc();
-$stmt->close();
-
-// Handle profile update
-$success = false;
-$error = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $display_name = trim($_POST['display_name'] ?? $user['display_name']);
-    $avatar_url = trim($_POST['avatar_url'] ?? '');
-    $uploaded_avatar = $user['avatar_url'] ?? '';
-    $new_username = trim($_POST['username'] ?? '');
-    $current_password = $_POST['current_password'] ?? '';
-    $new_password = $_POST['new_password'] ?? '';
-
-    // Handle image upload
-    if (isset($_FILES['avatar_file']) && $_FILES['avatar_file']['error'] === UPLOAD_ERR_OK) {
-        $fileTmp = $_FILES['avatar_file']['tmp_name'];
-        $fileExt = strtolower(pathinfo($_FILES['avatar_file']['name'], PATHINFO_EXTENSION));
-        $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-        if (in_array($fileExt, $allowed)) {
-            $newName = 'avatar_' . $user_id . '_' . time() . '.jpg';
-            $dest = '../assets/images/' . $newName;
-            $srcImg = null;
-            if ($fileExt === 'jpg' || $fileExt === 'jpeg') {
-                $srcImg = imagecreatefromjpeg($fileTmp);
-            } elseif ($fileExt === 'png') {
-                $srcImg = imagecreatefrompng($fileTmp);
-            } elseif ($fileExt === 'gif') {
-                $srcImg = imagecreatefromgif($fileTmp);
-            } elseif ($fileExt === 'webp') {
-                $srcImg = imagecreatefromwebp($fileTmp);
-            }
-
-            if ($srcImg) {
-                $dstImg = imagecreatetruecolor(200, 200);
-                $width = imagesx($srcImg);
-                $height = imagesy($srcImg);
-                $minDim = min($width, $height);
-                $srcX = intval(($width - $minDim) / 2);
-                $srcY = intval(($height - $minDim) / 2);
-                imagecopyresampled($dstImg, $srcImg, 0, 0, $srcX, $srcY, 200, 200, $minDim, $minDim);
-                imagejpeg($dstImg, $dest, 90);
-                imagedestroy($srcImg);
-                imagedestroy($dstImg);
-                $uploaded_avatar = $dest;
-            } else {
-                $error = 'Failed to process image.';
-            }
-        } else {
-            $error = 'Invalid image type. Allowed: jpg, jpeg, png, gif, webp.';
-        }
-    } elseif ($avatar_url !== '') {
-        $uploaded_avatar = $avatar_url;
-    }
-
-    // Username validation
-    if ($new_username && $new_username !== $user['username']) {
-        if (!preg_match('/^[a-z0-9]{3,}$/', $new_username)) {
-            $error = 'Username must be at least 3 characters, lowercase letters and numbers only.';
-        } else {
-            $stmt = $conn->prepare('SELECT id FROM users WHERE username = ? AND id != ?');
-            $stmt->bind_param('si', $new_username, $user_id);
-            $stmt->execute();
-            $stmt->store_result();
-            if ($stmt->num_rows > 0) {
-                $error = 'Username already taken.';
-            }
-            $stmt->close();
-        }
-    }
-
-    // Password update
-    if (!$error && $new_password) {
-        if (strlen($new_password) < 8) {
-            $error = 'New password must be at least 8 characters.';
-        } else {
-            $stmt = $conn->prepare('SELECT password FROM users WHERE id = ?');
-            $stmt->bind_param('i', $user_id);
-            $stmt->execute();
-            $stmt->bind_result($db_password);
-            $stmt->fetch();
-            $stmt->close();
-            if (!password_verify($current_password, $db_password)) {
-                $error = 'Current password is incorrect.';
-            }
-        }
-    }
-
-    // Final update if no errors
-    if (!$error) {
-        $fields = ['display_name = ?', 'avatar_url = ?'];
-        $params = [$display_name, $uploaded_avatar];
-        $types = 'ss';
-
-        if ($new_username && $new_username !== $user['username']) {
-            $fields[] = 'username = ?';
-            $params[] = $new_username;
-            $types .= 's';
-        }
-
-        if ($new_password) {
-            $fields[] = 'password = ?';
-            $params[] = password_hash($new_password, PASSWORD_DEFAULT);
-            $types .= 's';
-        }
-
-        $params[] = $user_id;
-        $types .= 'i';
-
-        $sql = 'UPDATE users SET ' . implode(', ', $fields) . ' WHERE id = ?';
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param($types, ...$params);
-        $stmt->execute();
-        $stmt->close();
-
-        $success = true;
-        $_SESSION['display_name'] = $display_name;
-        $user['display_name'] = $display_name;
-        $user['avatar_url'] = $uploaded_avatar;
-        if ($new_username) $user['username'] = $new_username;
-    }
-}
+// Firebase Authentication - no more MySQL dependency for auth
+require_once '../firebase-auth.php';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -170,39 +27,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="card shadow-sm rounded-4">
                     <div class="card-body">
                         <h5 class="card-title text-center mb-3">Profile Settings</h5>
-                        <?php if ($success): ?>
-                            <div class="alert alert-success">Profile updated successfully!</div>
-                        <?php elseif ($error): ?>
-                            <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
-                        <?php endif; ?>
-                        <form method="POST" class="mb-2" enctype="multipart/form-data">
+                        
+                        <!-- Toast Notifications -->
+                        <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1055;">
+                            <div id="successToast" class="toast align-items-center text-white bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                                <div class="d-flex">
+                                    <div class="toast-body">
+                                        <i class="bi bi-check-circle-fill me-2"></i>
+                                        <span id="successMessage">Profile updated successfully!</span>
+                                    </div>
+                                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                                </div>
+                            </div>
+                            <div id="errorToast" class="toast align-items-center text-white bg-danger border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                                <div class="d-flex">
+                                    <div class="toast-body">
+                                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                                        <span id="errorMessage">Error updating profile</span>
+                                    </div>
+                                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Firebase-based Profile Settings Form -->
+                        <div id="loadingSpinner" class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2 text-muted">Loading profile settings...</p>
+                        </div>
+
+                        <form id="profileForm" style="display: none;" class="mb-2">
                             <div class="mb-2 text-center">
-                                <img src="<?php echo htmlspecialchars($user['avatar_url'] ?? '../assets/user_male_80px.png'); ?>" class="rounded-circle border border-primary" width="80" height="80" alt="Avatar">
+                                <img id="currentAvatar" src="" class="rounded-circle border border-primary" width="80" height="80" alt="Avatar">
                             </div>
                             <div class="mb-2">
                                 <label for="display_name" class="form-label">Display Name</label>
-                                <input type="text" class="form-control" id="display_name" name="display_name" value="<?php echo htmlspecialchars($user['display_name'] ?? ''); ?>">
+                                <input type="text" class="form-control" id="display_name" name="display_name" required>
                             </div>
                             <div class="mb-2">
-                                <label for="username" class="form-label">Username</label>
-                                <input type="text" class="form-control" id="username" name="username" value="<?php echo htmlspecialchars($user['username'] ?? ''); ?>">
-                                <div class="form-text">Lowercase letters and numbers, at least 3 characters. Leave blank to keep current.</div>
+                                <label for="avatar_url" class="form-label">Avatar URL (Optional)</label>
+                                <input type="url" class="form-control" id="avatar_url" name="avatar_url" placeholder="Enter image URL or leave blank to keep current">
+                                <div class="form-text">Enter a direct link to an image, or leave blank to keep your current Google profile picture.</div>
                             </div>
-                            <div class="mb-2">
-                                <label for="current_password" class="form-label">Current Password</label>
-                                <input type="password" class="form-control" id="current_password" name="current_password" autocomplete="off">
-                                <div class="form-text">Required only to change password.</div>
-                            </div>
-                            <div class="mb-2">
-                                <label for="new_password" class="form-label">New Password</label>
-                                <input type="password" class="form-control" id="new_password" name="new_password" autocomplete="off">
-                                <div class="form-text">At least 8 characters. Leave blank to keep current.</div>
-                            </div>
-                            <div class="mb-2">
-                                <label for="avatar_file" class="form-label">Upload Avatar Image</label>
-                                <input type="file" class="form-control" id="avatar_file" name="avatar_file" accept="image/*">
-                            </div>
-                            <button type="submit" class="btn btn-primary w-100">Update Profile</button>
+                            <button type="submit" class="btn btn-primary w-100" id="updateBtn">
+                                <span id="btnText">Update Profile</span>
+                                <span id="btnSpinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                            </button>
                         </form>
                         <div class="text-center text-muted small"><strong>OneTalk - by Gwen Balajediong</strong></div>
                     </div>
@@ -211,6 +82,242 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </div>
     <script src="../assets/js/bootstrap.bundle.min.js"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+        import { getAuth, onAuthStateChanged, updateProfile } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+        import { getDatabase, ref, get, set } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDXixUNrcWNE1telIVZ_0L5KGQWLrElIEE",
+            authDomain: "onetalk-116de.firebaseapp.com",
+            databaseURL: "https://onetalk-116de-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "onetalk-116de",
+            storageBucket: "onetalk-116de.firebasestorage.app",
+            messagingSenderId: "175655177771",
+            appId: "1:175655177771:web:a95b4032228b4209eca46e",
+            measurementId: "G-B87YLF9WW4"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const database = getDatabase(app);
+
+        let currentUser = null;
+        let currentUserData = null;
+
+        // Firebase Data Cache System
+        const CACHE_EXPIRY_TIME = 5 * 60 * 1000; // 5 minutes
+        
+        function setCachedData(key, data) {
+            const cacheData = {
+                data: data,
+                timestamp: Date.now(),
+                expiresAt: Date.now() + CACHE_EXPIRY_TIME
+            };
+            localStorage.setItem(`firebase_cache_${key}`, JSON.stringify(cacheData));
+        }
+        
+        function getCachedData(key) {
+            const cached = localStorage.getItem(`firebase_cache_${key}`);
+            if (!cached) return null;
+            
+            const cacheData = JSON.parse(cached);
+            if (Date.now() > cacheData.expiresAt) {
+                localStorage.removeItem(`firebase_cache_${key}`);
+                return null;
+            }
+            
+            return cacheData.data;
+        }
+
+        // Set initial Google profile picture from localStorage if available
+        const firebaseUserData = localStorage.getItem('firebaseUser');
+        if (firebaseUserData) {
+            const userData = JSON.parse(firebaseUserData);
+            if (userData.photoURL) {
+                document.getElementById('currentAvatar').src = userData.photoURL;
+            } else {
+                document.getElementById('currentAvatar').src = '../assets/user_male_80px.png';
+            }
+        } else {
+            document.getElementById('currentAvatar').src = '../assets/user_male_80px.png';
+        }
+
+        // Show notification function
+        function showNotification(message, type = 'success') {
+            const toastId = type === 'success' ? 'successToast' : 'errorToast';
+            const messageId = type === 'success' ? 'successMessage' : 'errorMessage';
+            
+            document.getElementById(messageId).textContent = message;
+            const toast = new bootstrap.Toast(document.getElementById(toastId));
+            toast.show();
+        }
+
+        // Firebase Authentication Check
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                console.log('Settings page - User authenticated:', user.uid);
+                loadUserProfile(user);
+            } else {
+                console.log('Settings page - No user found, redirecting to login');
+                localStorage.removeItem('firebaseUser');
+                window.location.href = '../index.php';
+            }
+        });
+
+        async function loadUserProfile(user) {
+            try {
+                // Check cache first
+                currentUserData = getCachedData(`user_${user.uid}`);
+                
+                if (currentUserData) {
+                    console.log('Using cached user profile data');
+                } else {
+                    // Get fresh data from Firebase Database
+                    console.log('Loading fresh user profile from Firebase');
+                    const userRef = ref(database, `users/${user.uid}`);
+                    const snapshot = await get(userRef);
+                    
+                    if (snapshot.exists()) {
+                        currentUserData = snapshot.val();
+                        // Cache the user data
+                        setCachedData(`user_${user.uid}`, currentUserData);
+                        console.log('Loaded and cached user profile:', currentUserData);
+                    }
+                }
+                
+                if (currentUserData) {
+                    
+                    // Populate form with current data
+                    document.getElementById('display_name').value = currentUserData.displayName || user.displayName || '';
+                    document.getElementById('avatar_url').value = currentUserData.customAvatarUrl || '';
+                    
+                    // Set current avatar - show Google pic if no custom URL
+                    const avatarImg = document.getElementById('currentAvatar');
+                    if (currentUserData.customAvatarUrl && currentUserData.customAvatarUrl.trim()) {
+                        avatarImg.src = currentUserData.customAvatarUrl;
+                    } else if (currentUserData.photoURL) {
+                        avatarImg.src = currentUserData.photoURL;
+                    } else {
+                        avatarImg.src = '../assets/user_male_80px.png';
+                    }
+                    
+                    // Show form, hide loading
+                    document.getElementById('loadingSpinner').style.display = 'none';
+                    document.getElementById('profileForm').style.display = 'block';
+                } else {
+                    console.error('No user data found in database');
+                    showNotification('Error loading profile data', 'error');
+                }
+            } catch (error) {
+                console.error('Error loading user profile:', error);
+                showNotification('Error loading profile: ' + error.message, 'error');
+            }
+        }
+
+        // Handle profile update
+        document.getElementById('profileForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const updateBtn = document.getElementById('updateBtn');
+            const btnText = document.getElementById('btnText');
+            const btnSpinner = document.getElementById('btnSpinner');
+            
+            // Show loading state
+            updateBtn.disabled = true;
+            btnText.textContent = 'Updating...';
+            btnSpinner.classList.remove('d-none');
+            
+            try {
+                const newDisplayName = document.getElementById('display_name').value.trim();
+                const newAvatarUrl = document.getElementById('avatar_url').value.trim();
+                
+                // Validate inputs
+                if (!newDisplayName) {
+                    throw new Error('Display name is required');
+                }
+                
+                // Update user profile in Firebase Database
+                const updates = {
+                    displayName: newDisplayName,
+                    customAvatarUrl: newAvatarUrl || null,
+                    updatedAt: new Date().toISOString()
+                };
+                
+                await set(ref(database, `users/${currentUser.uid}`), {
+                    ...currentUserData,
+                    ...updates
+                });
+                
+                // Update Firebase Auth profile
+                await updateProfile(currentUser, {
+                    displayName: newDisplayName,
+                    photoURL: newAvatarUrl || currentUserData.photoURL
+                });
+                
+                // Update localStorage
+                const firebaseUserData = JSON.parse(localStorage.getItem('firebaseUser') || '{}');
+                firebaseUserData.displayName = newDisplayName;
+                firebaseUserData.photoURL = newAvatarUrl || currentUserData.photoURL;
+                localStorage.setItem('firebaseUser', JSON.stringify(firebaseUserData));
+                
+                // Update current data
+                currentUserData = { ...currentUserData, ...updates };
+                
+                // Update avatar display
+                const avatarImg = document.getElementById('currentAvatar');
+                if (newAvatarUrl && newAvatarUrl.trim()) {
+                    avatarImg.src = newAvatarUrl;
+                } else if (currentUserData.photoURL) {
+                    avatarImg.src = currentUserData.photoURL;
+                } else {
+                    avatarImg.src = '../assets/user_male_80px.png';
+                }
+                
+                showNotification('Profile updated successfully!', 'success');
+                
+            } catch (error) {
+                console.error('Error updating profile:', error);
+                showNotification(error.message, 'error');
+            } finally {
+                // Reset button state
+                updateBtn.disabled = false;
+                btnText.textContent = 'Update Profile';
+                btnSpinner.classList.add('d-none');
+            }
+        });
+        
+        // Preview avatar URL
+        document.getElementById('avatar_url').addEventListener('input', (e) => {
+            const url = e.target.value.trim();
+            const avatarImg = document.getElementById('currentAvatar');
+            
+            if (url) {
+                // Test if the URL is a valid image
+                const testImg = new Image();
+                testImg.onload = () => {
+                    avatarImg.src = url;
+                };
+                testImg.onerror = () => {
+                    // Keep current avatar if URL is invalid - prioritize Google profile pic
+                    if (currentUserData.photoURL) {
+                        avatarImg.src = currentUserData.photoURL;
+                    } else {
+                        avatarImg.src = '../assets/user_male_80px.png';
+                    }
+                };
+                testImg.src = url;
+            } else {
+                // When URL is blank, show Google profile picture
+                if (currentUserData.photoURL) {
+                    avatarImg.src = currentUserData.photoURL;
+                } else {
+                    avatarImg.src = '../assets/user_male_80px.png';
+                }
+            }
+        });
+    </script>
 </body>
 
 </html>
